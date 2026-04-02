@@ -59,6 +59,17 @@ web_server:
 
 api:
 
+output:
+  - platform: gpio
+    pin: GPIO2
+    id: led_output
+    inverted: false
+
+light:
+  - platform: binary
+    name: "ESP32 LED"
+    output: led_output
+
 # =================== RS485 ==================
 
 uart:
@@ -149,6 +160,12 @@ button:
     #   name: "${name} reset current"
 
 sensor:
+
+  # - platform: wifi_signal # Отчёт о силе сигнала WiFi/RSSI в дБ
+  #   name: "WiFi Signal RSSI"
+  #   id: wifi_signal_db
+  #   update_interval: 60s
+  #   entity_category: "diagnostic"  
 
 # === rs485 ===
   - platform: total_daily_energy
@@ -242,6 +259,11 @@ sensor:
     accuracy_decimals: 1
     filters:
       - multiply: 0.1
+    on_value:
+      then:
+        - output.turn_on: led_output
+        - delay: 150ms
+        - output.turn_off: led_output
 
   # Mains Frequency                                      0.01Hz   Int   203 1 R
   - platform: modbus_controller
@@ -602,12 +624,24 @@ sensor:
 
 # === BLE =====
 
+  # - platform: ble_rssi
+  #   mac_address: ${mac_address}
+  #   name: "${name} BLE RSSI"
   - platform: daly_bms_ble
     daly_bms_ble_id: bms0
     error_bitmask:
       name: "${name} error bitmask"
     total_voltage:
       name: "${name} total voltage"
+      on_value:
+        then:
+          - output.turn_on: led_output
+          - delay: 40ms
+          - output.turn_off: led_output      
+          - delay: 50ms
+          - output.turn_on: led_output
+          - delay: 40ms
+          - output.turn_off: led_output      
     current:
       name: "${name} current"
     power:
