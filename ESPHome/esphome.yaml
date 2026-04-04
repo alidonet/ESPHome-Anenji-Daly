@@ -1,30 +1,35 @@
 substitutions:
-  name: !secret daly_bms_name
-  inv_name: !secret daly_inverter_name
+  name: !secret bms_name
+  inv_name: !secret inverter_name
   device_description: "Monitor a DALY BMS via BLE and Anenji Inverter via modbus (RS485)"
   external_components_source: github://syssi/esphome-daly-bms@main
-  mac_address: !secret daly_bms_mac_address
-  refresh_bms: !secret daly_bms_refresh_interval
-  refresh_inverter: !secret daly_inverter_refresh_interval
+  mac_address: !secret bms_mac_address
+  refresh_bms: !secret bms_refresh_interval
+  refresh_inverter: !secret inverter_refresh_interval
   tx_pin: GPIO16
   rx_pin: GPIO17
+
+globals:
+  - id: global_bms_online
+    type: bool
+    initial_value: "false"
+  - id: global_inverter_online
+    type: bool
+    initial_value: "false"
 
 esphome:
   name: "esphome"
   comment: ${device_description}
   project:
     name: "alidonet.esphome-daly-bms"
-    version: 1.2.260403
+    version: 1.2.260405
   devices:
     - id: device_bms
       name: "Daly Battery BMS"
     - id: device_inverter
       name: "Anenji 4.2kW Inverter"
-    - id: device_esp
-      name: "ESP32 board"
-    #    model: ""
-    #    manufacturer: ""
-    #    sw_version: ""     
+    # - id: device_esp
+    #   name: "ESP32 board"
 
 esp32:
   board: esp32dev
@@ -36,13 +41,25 @@ external_components:
     refresh: 0s
 
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-  # use_address: !secret daly_bms_ip_address
-  # manual_ip:
-  #     static_ip: !secret daly_bms_ip_address
-  #     gateway: !secret daly_bms_ip_gateway
-  #     subnet: 255.255.255.0
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+      # use_address: !secret esp_ip_address
+      # manual_ip:
+      #     static_ip: !secret esp_ip_address
+      #     gateway: !secret esp_ip_gateway
+      #     subnet: 255.255.255.0
+    - ssid: !secret wifi_ssid2
+      password: !secret wifi_password2
+      # use_address: !secret esp_ip_address2
+      # manual_ip:
+      #     static_ip: !secret esp_ip_address2
+      #     gateway: !secret esp_ip_gateway2
+      #     subnet: 255.255.255.0
+  ap:
+    # ap_timeout: 30s
+
+captive_portal:    
 
 ota:
   platform: esphome
@@ -65,7 +82,7 @@ web_server:
 #  broker: !secret mqtt_ip_address
 #  username: !secret mqtt_user
 #  password: !secret mqtt_password
-#  id: !secret daly_bms_mqtt_topic
+#  id: !secret esp_mqtt_topic
 
 api:
 
@@ -74,7 +91,7 @@ light:
     name: "ESP32 LED"
     id: led_output
     pin: GPIO2
-    device_id: device_esp
+    # device_id: device_esp
 
 # =================== RS485 ==================
 
@@ -96,8 +113,24 @@ modbus_controller:
     command_throttle: 200ms
     update_interval: ${refresh_inverter}
     allow_duplicate_commands: true
-    offline_skip_updates: 40
-    
+    offline_skip_updates: 10
+    on_online: 
+      then:
+        - globals.set: 
+            id: global_inverter_online
+            value: "true"        
+        - logger.log:
+            format: "Inverter connected"
+            level: info
+    on_offline: 
+      then:
+        - globals.set: 
+            id: global_inverter_online
+            value: "false"
+        - logger.log:
+            format: "Inverter NOT connected"
+            level: info
+
 time:
   - platform: sntp
 
@@ -110,6 +143,22 @@ esp32_ble_tracker:
 ble_client:
   - mac_address: ${mac_address}
     id: client0
+    on_connect: 
+      then:
+        - globals.set: 
+            id: global_bms_online
+            value: "true"
+        - logger.log:
+            format: "BMS connected"
+            level: info
+    on_disconnect: 
+      then:
+        - globals.set: 
+            id: global_bms_online
+            value: "false"
+        - logger.log:
+            format: "BMS NOT connected"
+            level: info
 
 daly_bms_ble:
   - ble_client_id: client0
@@ -118,7 +167,24 @@ daly_bms_ble:
     status_registers: 62
     update_interval: ${refresh_bms}
 
+
 binary_sensor:
+
+  - platform: template
+    name: "${name} Online"
+    device_id: device_bms
+    device_class: connectivity
+    lambda: !lambda |-
+      return (id(global_bms_online));
+    entity_category: "diagnostic"
+
+  - platform: template
+    name: "${inv_name} Online"
+    device_id: device_inverter
+    device_class: connectivity
+    lambda: !lambda |-
+      return (id(global_inverter_online));
+    entity_category: "diagnostic"
 
 # ============== ble ===========
 
@@ -180,7 +246,7 @@ sensor:
     id: esp_uptime
     type: seconds
     name: "Uptime Sensor"
-    device_id: device_esp 
+    # device_id: device_esp 
     update_interval: 60s
     entity_category: "diagnostic"
 
@@ -188,7 +254,7 @@ sensor:
   #   id: ble_rssi_value
   #   mac_address: ${mac_address}
   #   name: "BLE RSSI value"     
-  #   device_id: device_esp
+  # #   device_id: device_esp
   #   entity_category: "diagnostic"  
 
   - platform: wifi_signal
@@ -196,7 +262,7 @@ sensor:
     name: "WiFi signal value"
     update_interval: 60s
     entity_category: "diagnostic"
-    device_id: device_esp
+    # device_id: device_esp
 
 # === rs485 ===
   - platform: total_daily_energy
@@ -1503,3 +1569,88 @@ select:
       "Li3": 5
       "Li4": 6
       "Lib": 8
+
+
+# =============== refresh options ===============
+
+  # - platform: template
+  #   id: bms_refresh_interval
+  #   name: "BMS Refresh Interval"
+  #   device_id: device_bms
+  #   options:
+  #    - "5"
+  #    - "10"
+  #    - "15"
+  #    - "20"
+  #    - "30"
+  #    - "60"
+  #    - "90"
+  #    - "120"
+  #    - "180"
+  #    - "300"
+  #   initial_option: "30"
+  #   optimistic: True
+  #   restore_value: True
+  #   set_action:
+  #     - logger.log:
+  #         level: INFO
+  #         format: "Chosen BMS refresh option: %s"
+  #         args: ["x.c_str()"]    
+  #     - lambda: !lambda |-
+  #         int interval_seconds = std::stoi(x.c_str());
+  #         uint32_t interval_ms = (uint32_t)(interval_seconds);
+  #         id(bms0).set_update_interval(interval_ms);
+
+  # - platform: template
+  #   id: inverter_refresh_interval
+  #   name: "Inverter refresh Interval"
+  #   device_id: device_inverter
+  #   options:
+  #    - "5"
+  #    - "10"
+  #    - "15"
+  #    - "20"
+  #    - "30"
+  #    - "60"
+  #    - "90"
+  #    - "120"
+  #    - "180"
+  #    - "300"
+  #   initial_option: "30"
+  #   optimistic: True
+  #   restore_value: True
+  #   set_action:
+  #     - logger.log:
+  #         level: INFO
+  #         format: "Chosen Inverter refresh option: %s"
+  #         args: ["x.c_str()"]    
+  #     - lambda: !lambda |-
+  #         int interval_seconds = std::stoi(x.c_str());
+  #         uint32_t interval_ms = (uint32_t)(interval_seconds);
+  #         id(smg0).set_update_interval(interval_ms);          
+
+  # - platform: template
+  #   id: esp_refresh_interval
+  #   name: "ESP status refresh interval"
+  # #   device_id: device_esp
+  #   options:
+  #    - "15"
+  #    - "30"
+  #    - "60"
+  #    - "90"
+  #    - "120"
+  #    - "180"
+  #    - "300"
+  #   initial_option: "60"
+  #   optimistic: True
+  #   restore_value: True
+  #   set_action:
+  #     - logger.log:
+  #         level: INFO
+  #         format: "Chosen ESP status refresh option: %s"
+  #         args: ["x.c_str()"]    
+  #     - lambda: !lambda |-
+  #         int interval_seconds = std::stoi(x.c_str());
+  #         uint32_t interval_ms = (uint32_t)(interval_seconds);
+  #         id(esp_uptime).set_update_interval(interval_ms);
+  #         id(wifi_signal_db).set_update_interval(interval_ms);
