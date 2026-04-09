@@ -21,13 +21,13 @@ esphome:
   name: "esphome"
   comment: ${device_description}
   project:
-    name: "alidonet.esphome-daly-bms"
+    name: "alidonet.esphome-bms-inverter"
     version: 1.2.260405
   devices:
     - id: device_bms
-      name: "Daly Battery BMS"
+      name: "Daly Battery"
     - id: device_inverter
-      name: "Anenji 4.2kW Inverter"
+      name: "Anenji"
     # - id: device_esp
     #   name: "ESP32 board"
 
@@ -35,6 +35,8 @@ esp32:
   board: esp32dev
   framework:
     type: esp-idf
+    advanced:
+      minimum_chip_revision: "3.1"
 
 external_components:
   - source: ${external_components_source}
@@ -90,8 +92,8 @@ light:
   - platform: status_led
     name: "ESP32 LED"
     id: led_output
-    pin: GPIO2
     # device_id: device_esp
+    pin: GPIO2
 
 # =================== RS485 ==================
 
@@ -368,6 +370,9 @@ sensor:
         - light.turn_on: led_output
         - delay: 150ms
         - light.turn_off: led_output
+        - globals.set: 
+            id: global_inverter_online
+            value: "true"           
 
   # Mains Frequency                                      0.01Hz   Int   203 1 R
   - platform: modbus_controller
