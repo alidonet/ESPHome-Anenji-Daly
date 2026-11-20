@@ -1,0 +1,32 @@
+name: Build ESP32 firmware
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ESPHome/**
+      - .github/workflows/firmware.yml
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: esphome/build-action@v8.1.0
+        id: firmware
+        with:
+          yaml-file: ESPHome/esphome.yaml
+          version: "2026.11.0"
+          complete-manifest: true
+      - uses: actions/upload-artifact@v6
+        with:
+          name: Anenji-Daly-ESP32
+          path: |
+            ${{ steps.firmware.outputs.name }}/*.bin
+            ${{ steps.firmware.outputs.name }}/manifest.json
+          if-no-files-found: error

@@ -1,15 +1,32 @@
 substitutions:
-  name: !secret bms_name
-  inv_name: !secret inverter_name
+  name: "Anenji BMS"
+  inv_name: "Anenji Inverter"
   device_description: "Monitor a DALY BMS via BLE and Anenji Inverter via modbus (RS485)"
-  external_components_source: github://syssi/esphome-daly-bms@main
-  mac_address: !secret bms_mac_address
-  refresh_bms: !secret bms_refresh_interval
-  refresh_inverter: !secret inverter_refresh_interval
+  external_components_source: github://syssi/esphome-daly-bms@7a78b6ba49bd5e2efad6ffcbe6c04bbf4082f2cf
+  refresh_bms: 10s
+  refresh_inverter: 30s
   tx_pin: GPIO16
   rx_pin: GPIO17
 
 globals:
+  - id: saved_daly_address
+    type: uint64_t
+    restore_value: true
+    initial_value: "0"
+  - id: daly_status_registers
+    type: uint8_t
+    restore_value: true
+    initial_value: "80"
+  - id: daly_candidates
+    type: std::array<uint64_t, 5>
+  - id: daly_scan_results
+    type: std::string
+    initial_value: '""'
+
+  - id: pv_energy_has_sample
+    type: bool
+    initial_value: "false"
+
   - id: global_bms_online
     type: bool
     initial_value: "false"
@@ -18,16 +35,30 @@ globals:
     initial_value: "false"
 
 esphome:
-  name: "esphome"
+  name: anenji-daly
+  min_version: 2026.11.0
+  name_add_mac_suffix: true
   comment: ${device_description}
   project:
     name: "alidonet.esphome-bms-inverter"
-    version: 1.2.260405
+    version: "1.3.261120"
+  on_boot:
+    priority: -100
+    then:
+      - lambda: |-
+          const uint64_t address = id(saved_daly_address);
+          id(bms0).set_status_registers(id(daly_status_registers));
+          id(daly_register_mode).update();
+          id(client0).set_address(address);
+          id(client0).set_enabled(address != 0);
+          id(daly_setup_status).publish_state(address != 0 ? "Daly saved; scan to replace it" : "Scan to find your Daly");
   devices:
     - id: device_bms
       name: "Daly Battery"
+      relation: via
     - id: device_inverter
       name: "Anenji"
+      relation: via
     # - id: device_esp
     #   name: "ESP32 board"
 
@@ -40,34 +71,22 @@ esp32:
 
 external_components:
   - source: ${external_components_source}
-    refresh: 0s
+    refresh: never
 
 wifi:
-  networks:
-    - ssid: !secret wifi_ssid
-      password: !secret wifi_password
-      # use_address: !secret esp_ip_address
-      # manual_ip:
-      #     static_ip: !secret esp_ip_address
-      #     gateway: !secret esp_ip_gateway
-      #     subnet: 255.255.255.0
-    - ssid: !secret wifi_ssid2
-      password: !secret wifi_password2
-      # use_address: !secret esp_ip_address2
-      # manual_ip:
-      #     static_ip: !secret esp_ip_address2
-      #     gateway: !secret esp_ip_gateway2
-      #     subnet: 255.255.255.0
   ap:
-    # ap_timeout: 30s
-
-captive_portal:    
+    ssid: "Anenji Daly Setup"
+    ap_timeout: 30s
+captive_portal:
+improv_serial:
 
 ota:
   platform: esphome
 #  platform: web_server
   on_begin:
     then:
+      - script.stop: scan_for_daly
+      - script.stop: connect_daly
       - switch.turn_off: ble_client_switch0
       - logger.log: "BLE connection suspended for OTA update"
 
@@ -75,8 +94,13 @@ logger:
   level: INFO
 
 web_server:
+  version: 3
   local: True
   port: 80
+  sorting_groups:
+    - id: daly_setup_group
+      name: Daly setup
+      sorting_weight: -10
 
 # If you use Home Assistant please remove this `mqtt` section and uncomment the `api` component!
 # The native API has many advantages over MQTT: https://esphome.io/components/api.html#advantages-over-mqtt
@@ -87,6 +111,8 @@ web_server:
 #  id: !secret esp_mqtt_topic
 
 api:
+  # The local page must keep working when Home Assistant is disconnected.
+  reboot_timeout: 0s
 
 light:
   - platform: status_led
@@ -107,15 +133,14 @@ modbus:
   - id: modbus0
     uart_id: uart_0
     send_wait_time: 200ms
+    turnaround_time: 200ms
 
 modbus_controller:
   - id: smg0
     address: 0x01
     modbus_id: modbus0
-    command_throttle: 200ms
     update_interval: ${refresh_inverter}
-    allow_duplicate_commands: true
-    offline_skip_updates: 10
+    offline_skip_updates: 0
     on_online: 
       then:
         - globals.set: 
@@ -126,12 +151,102 @@ modbus_controller:
             level: info
     on_offline: 
       then:
+        - globals.set:
+            id: pv_energy_has_sample
+            value: "false"
         - globals.set: 
             id: global_inverter_online
             value: "false"
         - logger.log:
             format: "Inverter NOT connected"
             level: info
+
+script:
+  - id: expire_inverter_battery_power
+    mode: restart
+    then:
+      # Allow two missed polls and time for the Modbus queue to drain.
+      - delay: !lambda return 3u * id(smg0).get_update_interval();
+      - lambda: id(smg0_battery_average_power).publish_state(NAN);
+
+  - id: watch_bms_telemetry
+    mode: restart
+    then:
+      - globals.set:
+          id: global_bms_online
+          value: "true"
+      # Keep the last online state through short BLE interruptions.
+      - delay: !lambda return 3u * id(bms0).get_update_interval();
+      - globals.set:
+          id: global_bms_online
+          value: "false"
+
+  - id: scan_for_daly
+    then:
+      - lambda: |-
+          id(daly_candidates).fill(0);
+          id(daly_scan_results).clear();
+          id(daly_devices_found).publish_state("Scanning...");
+          id(daly_setup_status).publish_state("Scanning for 12 seconds");
+      - delay: 12s
+      - lambda: |-
+          const auto &results = id(daly_scan_results);
+          id(daly_devices_found).publish_state(results.empty() ? "No Daly found" : results);
+          id(daly_setup_status).publish_state(results.empty() ? "Wake the BMS and scan again" : "Select a device number");
+
+  - id: connect_daly
+    parameters:
+      slot: int
+      previous_enabled: bool
+    then:
+      - text_sensor.template.publish:
+          id: daly_setup_status
+          state: "Connecting; waiting for Daly telemetry"
+      - lambda: id(client0).set_enabled(false);
+      - wait_until:
+          condition:
+            lambda: return id(client0).state() == esp32_ble_tracker::ClientState::IDLE;
+          timeout: 12s
+      - if:
+          condition:
+            lambda: return id(client0).state() != esp32_ble_tracker::ClientState::IDLE;
+          then:
+            - text_sensor.template.publish:
+                id: daly_setup_status
+                state: "BLE disconnect timed out; restart the ESP32 and retry"
+            - script.stop: connect_daly
+      - script.stop: watch_bms_telemetry
+      - globals.set:
+          id: global_bms_online
+          value: "false"
+      - lambda: |-
+          id(client0).set_address(id(daly_candidates)[slot]);
+          id(client0).set_enabled(true);
+      - wait_until:
+          condition:
+            lambda: return id(global_bms_online);
+          timeout: 30s
+      - if:
+          condition:
+            lambda: return id(global_bms_online);
+          then:
+            - lambda: |-
+                id(saved_daly_address) = id(daly_candidates)[slot];
+                id(daly_setup_status).publish_state(std::string("Saved Daly ") + id(client0).address_str());
+          else:
+            - lambda: id(client0).set_enabled(false);
+            - wait_until:
+                condition:
+                  lambda: return id(client0).state() == esp32_ble_tracker::ClientState::IDLE;
+                timeout: 12s
+            - lambda: |-
+                if (id(client0).state() != esp32_ble_tracker::ClientState::IDLE) {
+                  id(daly_setup_status).publish_state("BLE disconnect timed out; restart the ESP32");
+                  return;
+                }
+                id(client0).set_address(id(saved_daly_address));
+                id(client0).set_enabled(previous_enabled && id(saved_daly_address) != 0);
+                id(daly_setup_status).publish_state("No telemetry; the previous Daly choice was kept");
 
 time:
   - platform: sntp
@@ -140,33 +255,57 @@ time:
 
 esp32_ble_tracker:
   scan_parameters:
-    active: false
+    active: true
+  on_ble_advertise:
+    then:
+      - lambda: |-
+          if (!id(scan_for_daly).is_running())
+            return;
+          const auto name = x.get_name();
+          const auto &services = x.get_service_uuids();
+          const auto daly_service = ble_device_base::ESPBTUUID::from_uint16(0xFFF0);
+          if (!name.starts_with("DL-") && !name.starts_with("DALY") && !name.starts_with("Daly") &&
+              std::find(services.begin(), services.end(), daly_service) == services.end())
+            return;
+          const uint64_t address = x.address_uint64();
+          auto &candidates = id(daly_candidates);
+          if (address == 0 || std::find(candidates.begin(), candidates.end(), address) != candidates.end())
+            return;
+          const auto empty = std::find(candidates.begin(), candidates.end(), 0);
+          if (empty == candidates.end())
+            return;
+          *empty = address;
+          std::array<char, MAC_ADDRESS_PRETTY_BUFFER_SIZE> mac;
+          x.address_str_to(std::span(mac));
+          char entry[54];
+          snprintf(entry, sizeof(entry), "%d. %.12s %s (%d dBm)", int(empty - candidates.begin()) + 1,
+                   name.empty() ? "BLE" : name.c_str(), mac.data(), x.get_rssi());
+          auto &results = id(daly_scan_results);
+          if (!results.empty())
+            results += " | ";
+          results += entry;
 
 ble_client:
-  - mac_address: ${mac_address}
+  - mac_address: "00:00:00:00:00:00"
     id: client0
     on_connect: 
       then:
-        - globals.set: 
-            id: global_bms_online
-            value: "true"
         - logger.log:
-            format: "BMS connected"
+            format: "BMS BLE connected"
             level: info
     on_disconnect: 
       then:
-        - globals.set: 
-            id: global_bms_online
-            value: "false"
         - logger.log:
-            format: "BMS NOT connected"
+            format: "BMS BLE disconnected"
             level: info
 
 daly_bms_ble:
   - ble_client_id: client0
     id: bms0
     password: 12345678
-    status_registers: 62
+    # The 80-register reply includes balance current and MOSFET/board temperatures.
+    # The web setup can select 62 for firmware that needs the shorter request.
+    status_registers: 80
     update_interval: ${refresh_bms}
 
 
@@ -204,6 +343,20 @@ binary_sensor:
 
 button:
 
+  - platform: template
+    name: "Find Daly devices"
+    entity_category: config
+    web_server:
+      sorting_group_id: daly_setup_group
+      sorting_weight: 10
+    on_press:
+      - if:
+          condition:
+            not:
+              script.is_running: connect_daly
+          then:
+            - script.execute: scan_for_daly
+
 # ====== rs485 ========
 
   # Exit the fault mode                                           Uint  426   W   1: Exit the fault state
@@ -213,9 +366,11 @@ button:
     icon: mdi:restore
     on_press:
       then:
-        - lambda: |-
-            auto cmd = esphome::modbus_controller::ModbusCommandItem::create_write_multiple_command(id(smg0), 426, 1, {1});
-            id(smg0)->queue_command(cmd);
+        - modbus_client.write_multiple_registers:
+            modbus_id: modbus0
+            address: 0x01
+            start_address: 426
+            values: [1]
 
 # ========= ble =======
 
@@ -254,7 +409,7 @@ sensor:
 
   # - platform: ble_rssi
   #   id: ble_rssi_value
-  #   mac_address: ${mac_address}
+  #   mac_address: "AA:BB:CC:DD:EE:FF"
   #   name: "BLE RSSI value"     
   # #   device_id: device_esp
   #   entity_category: "diagnostic"  
@@ -272,11 +427,20 @@ sensor:
     device_id: device_inverter
     restore: true
     device_class: energy
-    power_id: smg0_pv_average_power
+    power_id: pv_power_for_energy
+    method: right
     filters:
       # Multiplication factor from W to kW is 0.001
       - multiply: 0.001
     unit_of_measurement: kWh
+
+  - platform: template
+    id: pv_power_for_energy
+    internal: true
+    update_interval: never
+    unit_of_measurement: W
+    device_class: power
+    accuracy_decimals: 0
 
   - platform: template
     name: "${inv_name} discharging power"
@@ -290,7 +454,7 @@ sensor:
     update_interval: never
     lambda: |-
       if (isnan(id(smg0_battery_average_power).state)) {
-        return {};
+        return NAN;
       }
       auto power = id(smg0_battery_average_power).state;
       return (power < 0.0f) ? -power : 0.0f;
@@ -307,7 +471,7 @@ sensor:
     update_interval: never
     lambda: |-
       if (isnan(id(smg0_battery_average_power).state)) {
-        return {};
+        return NAN;
       }
       auto power = id(smg0_battery_average_power).state;
       return (power > 0.0f) ? power : 0.0f;
@@ -370,9 +534,6 @@ sensor:
         - light.turn_on: led_output
         - delay: 150ms
         - light.turn_off: led_output
-        - globals.set: 
-            id: global_inverter_online
-            value: "true"           
 
   # Mains Frequency                                      0.01Hz   Int   203 1 R
   - platform: modbus_controller
@@ -590,6 +751,11 @@ sensor:
     on_value:
       - component.update: smg0_discharging_power
       - component.update: smg0_charging_power
+      - if:
+          condition:
+            lambda: return !isnan(x);
+          then:
+            - script.execute: expire_inverter_battery_power
 
   # PV average voltage                                   0.1V     Int   219 1 R
   - platform: modbus_controller
@@ -634,6 +800,20 @@ sensor:
     device_class: power
     state_class: measurement
     accuracy_decimals: 0
+    on_raw_value:
+      - sensor.template.publish:
+          id: pv_power_for_energy
+          state: !lambda |-
+            static uint32_t last_sample_ms = 0;
+            const uint32_t now = millis();
+            const uint32_t elapsed = now - last_sample_ms;
+            const uint32_t poll_interval = id(smg0).get_update_interval();
+            const bool fresh_pair = id(pv_energy_has_sample) &&
+                                    elapsed <= poll_interval + poll_interval / 2;
+            last_sample_ms = now;
+            id(pv_energy_has_sample) = std::isfinite(x);
+            // Zero advances the right-hand integrator without counting the gap.
+            return fresh_pair && id(pv_energy_has_sample) && x > 0 ? x : 0.0f;
 
   # PV charging average power                            1W       Int   224 1 R
   - platform: modbus_controller
@@ -762,12 +942,11 @@ sensor:
 
   - platform: daly_bms_ble
     daly_bms_ble_id: bms0
-    error_bitmask:
-      name: "${name} error bitmask"
-      device_id: device_bms
     total_voltage:
       name: "${name} total voltage"
       device_id: device_bms
+      on_raw_value:
+        - script.execute: watch_bms_telemetry
       on_value:
         then:
           - light.turn_on: led_output
@@ -862,6 +1041,7 @@ sensor:
 number:
 # ====== rs485 ======
 
+  # AC and charging limits below refer to the ANJ-4.2KW-24V-WIFI manual.
   # Output voltage                                                0.1V    Uint  320 1 R/W
   - platform: modbus_controller
     modbus_controller_id: smg0
@@ -871,14 +1051,16 @@ number:
     address: 320
     register_type: holding
     value_type: U_WORD
-    min_value: 0.0
-    # max_value: 100.0
-    step: 0.1
+    min_value: 220
+    max_value: 240
+    step: 10
     unit_of_measurement: "V"
     entity_category: config
     icon: mdi:cog
     lambda: "return x * 0.1f;"
     write_lambda: |-
+      if (x != 220 && x != 230 && x != 240)
+        return {};
       return x * 10.0f;
 
   # Output frequency setting                                      0.01Hz  Uint  321 1 R/W
@@ -890,14 +1072,16 @@ number:
     address: 321
     register_type: holding
     value_type: U_WORD
-    min_value: 0.0
-    # max_value: 100.0
-    step: 0.01
+    min_value: 50
+    max_value: 60
+    step: 10
     unit_of_measurement: "Hz"
     entity_category: config
     icon: mdi:cog
     lambda: "return x * 0.01f;"
     write_lambda: |-
+      if (x != 50 && x != 60)
+        return {};
       return x * 100.0f;
 
   # Battery overvoltage protection point                          0.1V    Uint  323 1 R/W
@@ -928,8 +1112,9 @@ number:
     address: 324
     register_type: holding
     value_type: U_WORD
-    min_value: 0.0
-    max_value: 100.0
+    # The battery profile and float voltage may narrow this envelope.
+    min_value: 24.0
+    max_value: 31.0
     step: 0.1
     unit_of_measurement: "V"
     entity_category: config
@@ -947,8 +1132,9 @@ number:
     address: 325
     register_type: holding
     value_type: U_WORD
-    min_value: 0.0
-    # max_value: 100.0
+    # The configured bulk voltage is the actual upper limit.
+    min_value: 24.0
+    max_value: 31.0
     step: 0.1
     unit_of_measurement: "V"
     entity_category: config
@@ -1042,8 +1228,8 @@ number:
     address: 333
     register_type: holding
     value_type: U_WORD
-    min_value: 0.0
-    max_value: 100.0
+    min_value: 5.0
+    max_value: 80.0
     step: 0.1
     unit_of_measurement: "A"
     entity_category: config
@@ -1061,8 +1247,9 @@ number:
     address: 334
     register_type: holding
     value_type: U_WORD
-    min_value: 0.0
-    max_value: 100.0
+    # The configured float voltage is the actual lower limit.
+    min_value: 24.0
+    max_value: 31.0
     step: 0.1
     unit_of_measurement: "V"
     entity_category: config
@@ -1112,7 +1299,7 @@ number:
     address: 337
     register_type: holding
     value_type: U_WORD
-    min_value: 0.0
+    min_value: 1.0
     max_value: 90.0
     step: 1
     unit_of_measurement: "day"
@@ -1270,13 +1457,37 @@ switch:
       name: "${name} discharging"
       device_id: device_bms
 
-  - platform: ble_client
-    ble_client_id: client0
+  - platform: template
     name: "${name} enable bluetooth connection"
     device_id: device_bms
     id: ble_client_switch0
+    lambda: return id(client0).enabled;
+    turn_on_action:
+      - lambda: |-
+          if (id(saved_daly_address) != 0 && !id(connect_daly).is_running())
+            id(client0).set_enabled(true);
+    turn_off_action:
+      - lambda: id(client0).set_enabled(false);
 
 text_sensor:
+
+  - platform: template
+    id: daly_devices_found
+    name: "Daly devices found"
+    entity_category: diagnostic
+    update_interval: never
+    web_server:
+      sorting_group_id: daly_setup_group
+      sorting_weight: 20
+
+  - platform: template
+    id: daly_setup_status
+    name: "Daly setup status"
+    entity_category: diagnostic
+    update_interval: never
+    web_server:
+      sorting_group_id: daly_setup_group
+      sorting_weight: 40
 
 # ===== rs485 ======
 
@@ -1287,54 +1498,53 @@ text_sensor:
     device_id: device_inverter
     address: 100
     register_type: holding
-    register_count: 2
     response_size: 4
     raw_encode: HEXBYTES
     icon: mdi:alert-circle
     lambda: |-
-      static const uint8_t FAULTS_SIZE = 27;
-      static const char *const FAULTS[FAULTS_SIZE] = {
-          "Over temperature of inverter module",                     // 0000 0000 0000 0000 0000 0000 0000 0001 (1)
-          "Over temperature of DCDC module",                         // 0000 0000 0000 0000 0000 0000 0000 0010 (2)
-          "Battery over voltage",                                    // 0000 0000 0000 0000 0000 0000 0000 0100 (3)
-          "PV module over temperature",                              // 0000 0000 0000 0000 0000 0000 0000 1000 (4)
-          "Output short circuit",                                    // 0000 0000 0000 0000 0000 0000 0001 0000 (5)
-          "Inverter over voltage",                                   // 0000 0000 0000 0000 0000 0000 0010 0000 (6)
-          "Output over load",                                        // 0000 0000 0000 0000 0000 0000 0100 0000 (7)
-          "Bus over voltage",                                        // 0000 0000 0000 0000 0000 0000 1000 0000 (8)
-          "Bus soft start timed out",                                // 0000 0000 0000 0000 0000 0001 0000 0000 (9)
-          "PV over current",                                         // 0000 0000 0000 0000 0000 0010 0000 0000 (10)
-          "PV over voltage",                                         // 0000 0000 0000 0000 0000 0100 0000 0000 (11)
-          "Battery over current",                                    // 0000 0000 0000 0000 0000 1000 0000 0000 (12)
-          "Inverter over current",                                   // 0000 0000 0000 0000 0001 0000 0000 0000 (13)
-          "Bus low voltage",                                         // 0000 0000 0000 0000 0010 0000 0000 0000 (14)
-          "Reserve (Bit 15)",                                        // 0000 0000 0000 0000 0100 0000 0000 0000 (15)
-          "Inverter DC component is too high",                       // 0000 0000 0000 0000 1000 0000 0000 0000 (16)
-          "Reserve (Bit 17)",                                        // 0000 0000 0000 0001 0000 0000 0000 0000 (17)
-          "The zero bias of output current is too large",            // 0000 0000 0000 0010 0000 0000 0000 0000 (18)
-          "The zero bias of inverter current is too large",          // 0000 0000 0000 0100 0000 0000 0000 0000 (19)
-          "The zero bias of battery current is too large",           // 0000 0000 0000 1000 0000 0000 0000 0000 (20)
-          "The zero bias of PV current is too large",                // 0000 0000 0001 0000 0000 0000 0000 0000 (21)
-          "Inverter low voltage",                                    // 0000 0000 0010 0000 0000 0000 0000 0000 (22)
-          "Inverter negative power protection",                      // 0000 0000 0100 0000 0000 0000 0000 0000 (23)
-          "The host in the parallel system is lost",                 // 0000 0000 1000 0000 0000 0000 0000 0000 (24)
-          "Synchronization signal abnormal in the parallel system",  // 0000 0001 0000 0000 0000 0000 0000 0000 (25)
-          "The battery type is incompatible",                        // 0000 0010 0000 0000 0000 0000 0000 0000 (26)
-          "Parallel versions are incompatible",                      // 0000 0100 0000 0000 0000 0000 0000 0000 (27)
+      // Most urgent flags first. Bit positions match the register map.
+      static constexpr struct { uint8_t bit; const char *label; } messages[] = {
+          {4, "Output short circuit"},  // 0000 0000 0000 0000 0000 0000 0001 0000 (5)
+          {2, "Battery overvoltage"},  // 0000 0000 0000 0000 0000 0000 0000 0100 (3)
+          {11, "Battery overcurrent"},  // 0000 0000 0000 0000 0000 1000 0000 0000 (12)
+          {7, "DC bus overvoltage"},  // 0000 0000 0000 0000 0000 0000 1000 0000 (8)
+          {5, "Inverter overvoltage"},  // 0000 0000 0000 0000 0000 0000 0010 0000 (6)
+          {12, "Inverter overcurrent"},  // 0000 0000 0000 0000 0001 0000 0000 0000 (13)
+          {10, "PV overvoltage"},  // 0000 0000 0000 0000 0000 0100 0000 0000 (11)
+          {9, "PV overcurrent"},  // 0000 0000 0000 0000 0000 0010 0000 0000 (10)
+          {0, "Inverter overheat"},  // 0000 0000 0000 0000 0000 0000 0000 0001 (1)
+          {1, "DC/DC overheat"},  // 0000 0000 0000 0000 0000 0000 0000 0010 (2)
+          {3, "PV overheat"},  // 0000 0000 0000 0000 0000 0000 0000 1000 (4)
+          {6, "Output overload"},  // 0000 0000 0000 0000 0000 0000 0100 0000 (7)
+          {15, "Excess inverter DC offset"},  // 0000 0000 0000 0000 1000 0000 0000 0000 (16)
+          {13, "DC bus undervoltage"},  // 0000 0000 0000 0000 0010 0000 0000 0000 (14)
+          {21, "Inverter undervoltage"},  // 0000 0000 0010 0000 0000 0000 0000 0000 (22)
+          {22, "Reverse inverter power"},  // 0000 0000 0100 0000 0000 0000 0000 0000 (23)
+          {8, "DC bus start timeout"},  // 0000 0000 0000 0000 0000 0001 0000 0000 (9)
+          {25, "Incompatible battery"},  // 0000 0010 0000 0000 0000 0000 0000 0000 (26)
+          {23, "Parallel host lost"},  // 0000 0000 1000 0000 0000 0000 0000 0000 (24)
+          {24, "Parallel sync fault"},  // 0000 0001 0000 0000 0000 0000 0000 0000 (25)
+          {26, "Parallel version mismatch"},  // 0000 0100 0000 0000 0000 0000 0000 0000 (27)
+          {17, "Output current offset"},  // 0000 0000 0000 0010 0000 0000 0000 0000 (18)
+          {18, "Inverter current offset"},  // 0000 0000 0000 0100 0000 0000 0000 0000 (19)
+          {19, "Battery current offset"},  // 0000 0000 0000 1000 0000 0000 0000 0000 (20)
+          {20, "PV current offset"},  // 0000 0000 0001 0000 0000 0000 0000 0000 (21)
+          {14, "Reserved fault 15"},  // 0000 0000 0000 0000 0100 0000 0000 0000 (15)
+          {16, "Reserved fault 17"},  // 0000 0000 0000 0001 0000 0000 0000 0000 (17)
       };
-      std::string values = "";
-
-      uint32_t mask = modbus_controller::dword_from_hex_str(x, 0);
-      if (mask) {
-        for (int i = 0; i < FAULTS_SIZE; i++) {
-          if (mask & (1 << i)) {
-            values.append(FAULTS[i]);
-            values.append(";");
-          }
+      const uint32_t mask = modbus::helpers::dword_from_hex_str(x, 0);
+      std::string values;
+      for (const auto &[bit, label] : messages) {
+        if (!(mask & (1u << bit)))
+          continue;
+        // Reserve five characters for the suffix if lower-priority flags are omitted.
+        if (values.size() + (values.empty() ? 0 : 2) + strlen(label) > 250) {
+          values.append("; ...");
+          break;
         }
-        if (!values.empty()) {
-          values.pop_back();
-        }
+        if (!values.empty())
+          values.append("; ");
+        values.append(label);
       }
       return values;
 
@@ -1345,46 +1555,45 @@ text_sensor:
     device_id: device_inverter
     address: 108
     register_type: holding
-    register_count: 2
     response_size: 4
     raw_encode: HEXBYTES
     icon: mdi:alert-circle
     lambda: |-
-      static const uint8_t WARNINGS_SIZE = 19;
-      static const char *const WARNINGS[WARNINGS_SIZE] = {
-          "Reserve (Bit 0)",                                             // 0000 0000 0000 0000 0000 0000 0000 0001 (1)
-          "Mains waveform abnormal",                                     // 0000 0000 0000 0000 0000 0000 0000 0010 (2)
-          "Reserve (Bit 2)",                                             // 0000 0000 0000 0000 0000 0000 0000 0100 (3)
-          "Mains low voltage",                                           // 0000 0000 0000 0000 0000 0000 0000 1000 (4)
-          "Mains over frequency",                                        // 0000 0000 0000 0000 0000 0000 0001 0000 (5)
-          "Mains low frequency",                                         // 0000 0000 0000 0000 0000 0000 0010 0000 (6)
-          "PV low voltage",                                              // 0000 0000 0000 0000 0000 0000 0100 0000 (7)
-          "Over temperature",                                            // 0000 0000 0000 0000 0000 0000 1000 0000 (8)
-          "Battery low voltage",                                         // 0000 0000 0000 0000 0000 0001 0000 0000 (9)
-          "Battery is not connected",                                    // 0000 0000 0000 0000 0000 0010 0000 0000 (10)
-          "Overload",                                                    // 0000 0000 0000 0000 0000 0100 0000 0000 (11)
-          "Battery Eq charging",                                         // 0000 0000 0000 0000 0000 1000 0000 0000 (12)
-          "Battery undervoltage",                                        // 0000 0000 0000 0000 0001 0000 0000 0000 (13)
-          "Output power derating",                                       // 0000 0000 0000 0000 0010 0000 0000 0000 (14)
-          "Fan blocked",                                                 // 0000 0000 0000 0000 0100 0000 0000 0000 (15)
-          "PV energy is too low to be use",                              // 0000 0000 0000 0000 1000 0000 0000 0000 (16)
-          "Parallel communication interrupted",                          // 0000 0000 0000 0001 0000 0000 0000 0000 (17)
-          "Output mode of Single and Parallel systems inconsistent",     // 0000 0000 0000 0010 0000 0000 0000 0000 (18)
-          "Battery voltage difference of parallel system is too large",  // 0000 0000 0000 0100 0000 0000 0000 0000 (19)
+      // Most urgent flags first. Bit positions match the register map.
+      static constexpr struct { uint8_t bit; const char *label; } messages[] = {
+          {7, "Overheating"},  // 0000 0000 0000 0000 0000 0000 1000 0000 (8)
+          {10, "Overload"},  // 0000 0000 0000 0000 0000 0100 0000 0000 (11)
+          {14, "Fan blocked"},  // 0000 0000 0000 0000 0100 0000 0000 0000 (15)
+          {12, "Battery undervoltage"},  // 0000 0000 0000 0000 0001 0000 0000 0000 (13)
+          {8, "Battery voltage low"},  // 0000 0000 0000 0000 0000 0001 0000 0000 (9)
+          {9, "Battery disconnected"},  // 0000 0000 0000 0000 0000 0010 0000 0000 (10)
+          {18, "Parallel battery mismatch"},  // 0000 0000 0000 0100 0000 0000 0000 0000 (19)
+          {13, "Output derating"},  // 0000 0000 0000 0000 0010 0000 0000 0000 (14)
+          {16, "Parallel link lost"},  // 0000 0000 0000 0001 0000 0000 0000 0000 (17)
+          {17, "Parallel mode mismatch"},  // 0000 0000 0000 0010 0000 0000 0000 0000 (18)
+          {1, "Mains waveform fault"},  // 0000 0000 0000 0000 0000 0000 0000 0010 (2)
+          {3, "Mains undervoltage"},  // 0000 0000 0000 0000 0000 0000 0000 1000 (4)
+          {4, "Mains overfrequency"},  // 0000 0000 0000 0000 0000 0000 0001 0000 (5)
+          {5, "Mains underfrequency"},  // 0000 0000 0000 0000 0000 0000 0010 0000 (6)
+          {6, "PV undervoltage"},  // 0000 0000 0000 0000 0000 0000 0100 0000 (7)
+          {15, "Low PV energy"},  // 0000 0000 0000 0000 1000 0000 0000 0000 (16)
+          {11, "Battery equalizing"},  // 0000 0000 0000 0000 0000 1000 0000 0000 (12)
+          {0, "Reserved warning 1"},  // 0000 0000 0000 0000 0000 0000 0000 0001 (1)
+          {2, "Reserved warning 3"},  // 0000 0000 0000 0000 0000 0000 0000 0100 (3)
       };
-      std::string values = "";
-
-      uint32_t mask = modbus_controller::dword_from_hex_str(x, 0);
-      if (mask) {
-        for (int i = 0; i < WARNINGS_SIZE; i++) {
-          if (mask & (1 << i)) {
-            values.append(WARNINGS[i]);
-            values.append(";");
-          }
+      const uint32_t mask = modbus::helpers::dword_from_hex_str(x, 0);
+      std::string values;
+      for (const auto &[bit, label] : messages) {
+        if (!(mask & (1u << bit)))
+          continue;
+        // Reserve five characters for the suffix if lower-priority flags are omitted.
+        if (values.size() + (values.empty() ? 0 : 2) + strlen(label) > 250) {
+          values.append("; ...");
+          break;
         }
-        if (!values.empty()) {
-          values.pop_back();
-        }
+        if (!values.empty())
+          values.append("; ");
+        values.append(label);
       }
       return values;
 
@@ -1398,7 +1607,7 @@ text_sensor:
     raw_encode: HEXBYTES
     icon: mdi:information
     lambda: |-
-      uint16_t value = modbus_controller::word_from_hex_str(x, 0);
+      uint16_t value = modbus::helpers::word_from_hex_str(x, 0);
       switch (value) {
         case 0: return std::string("Power On");
         case 1: return std::string("Standby");
@@ -1420,7 +1629,7 @@ text_sensor:
     raw_encode: HEXBYTES
     icon: mdi:information
     lambda: |-
-      uint16_t value = modbus_controller::word_from_hex_str(x, 0);
+      uint16_t value = modbus::helpers::word_from_hex_str(x, 0);
       switch (value) {
         case 0: return std::string("Питание включено");
         case 1: return std::string("Ожидание");
@@ -1439,12 +1648,54 @@ text_sensor:
     battery_status:
       name: "${name} battery status"
       device_id: device_bms
+    # The component decodes this text directly from the original 64-bit mask.
     errors:
       name: "${name} errors"
       device_id: device_bms
 
 
 select:
+
+  - platform: template
+    id: daly_register_mode
+    name: "Daly telemetry mode"
+    entity_category: config
+    options: ["80 registers", "62 registers"]
+    update_interval: never
+    lambda: |-
+      return id(daly_status_registers) == 62 ? std::string("62 registers") : std::string("80 registers");
+    web_server:
+      sorting_group_id: daly_setup_group
+      sorting_weight: 5
+    set_action:
+      - lambda: |-
+          if (!id(connect_daly).is_running()) {
+            id(daly_status_registers) = x == "62 registers" ? 62 : 80;
+            id(bms0).set_status_registers(id(daly_status_registers));
+          }
+          id(daly_register_mode).update();
+
+  - platform: template
+    id: daly_device_choice
+    name: "Connect to Daly device"
+    entity_category: config
+    options: ["Choose a number", "1", "2", "3", "4", "5"]
+    web_server:
+      sorting_group_id: daly_setup_group
+      sorting_weight: 30
+    set_action:
+      - lambda: |-
+          if (x.size() != 1 || x[0] < '1' || x[0] > '5')
+            return;
+          if (id(scan_for_daly).is_running() || id(connect_daly).is_running())
+            return;
+          const size_t slot = x[0] - '1';
+          id(daly_device_choice).publish_state("Choose a number");
+          if (id(daly_candidates)[slot] == 0) {
+            id(daly_setup_status).publish_state("Scan and choose a number from the results");
+            return;
+          }
+          id(connect_daly).execute(slot, id(client0).enabled);
 
 # ========= rs485 =========
 
@@ -1603,7 +1854,7 @@ select:
   #         args: ["x.c_str()"]    
   #     - lambda: !lambda |-
   #         int interval_seconds = std::stoi(x.c_str());
-  #         uint32_t interval_ms = (uint32_t)(interval_seconds);
+  #         uint32_t interval_ms = static_cast<uint32_t>(interval_seconds) * 1000u;
   #         id(bms0).set_update_interval(interval_ms);
 
   # - platform: template
@@ -1631,7 +1882,7 @@ select:
   #         args: ["x.c_str()"]    
   #     - lambda: !lambda |-
   #         int interval_seconds = std::stoi(x.c_str());
-  #         uint32_t interval_ms = (uint32_t)(interval_seconds);
+  #         uint32_t interval_ms = static_cast<uint32_t>(interval_seconds) * 1000u;
   #         id(smg0).set_update_interval(interval_ms);          
 
   # - platform: template
@@ -1656,6 +1907,6 @@ select:
   #         args: ["x.c_str()"]    
   #     - lambda: !lambda |-
   #         int interval_seconds = std::stoi(x.c_str());
-  #         uint32_t interval_ms = (uint32_t)(interval_seconds);
+  #         uint32_t interval_ms = static_cast<uint32_t>(interval_seconds) * 1000u;
   #         id(esp_uptime).set_update_interval(interval_ms);
   #         id(wifi_signal_db).set_update_interval(interval_ms);
