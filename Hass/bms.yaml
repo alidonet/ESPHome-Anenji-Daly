@@ -8,56 +8,56 @@ sections:
     cards:
       - type: history-graph
         entities:
-          - entity: sensor.daly_battery_anenji_bms_battery_status
+          - entity: sensor.daly_status
             name: Состояние
-          - entity: binary_sensor.daly_battery_anenji_bms_charging
+          - entity: binary_sensor.daly_charging
             name: MOSFET зарядки
-          - entity: sensor.daly_battery_anenji_bms_state_of_charge
-          - entity: sensor.daly_battery_anenji_bms_capacity_remaining
+          - entity: sensor.daly_soc
+          - entity: sensor.daly_remaining_capacity
         logarithmic_scale: false
       - type: history-graph
         entities:
-          - entity: sensor.daly_battery_anenji_bms_temperature
+          - entity: sensor.daly_temperature
         logarithmic_scale: false
   - type: grid
     cards:
       - type: custom:jk-bms-card
         language: ""
-        prefix: daly_battery_anenji_bms
+        prefix: daly
         cellCount: 8
         cellColumns: 2
         cellLayout: bankMode
         tempSensorsCount: 1
         hasHeater: 0
         entities:
-          delta_cell_voltage: sensor.daly_battery_anenji_bms_delta_cell_voltage
-          balancing: binary_sensor.daly_battery_anenji_bms_balancing
-          balancing_current: sensor.daly_battery_anenji_bms_balance_current
-          power: sensor.daly_battery_anenji_bms_power
-          charging: binary_sensor.daly_battery_anenji_bms_charging
-          charging_power: sensor.daly_battery_anenji_bms_charging_power
-          discharging: binary_sensor.daly_battery_anenji_bms_discharging
-          discharging_power: sensor.daly_battery_anenji_bms_discharging_power
-          balancer: switch.daly_battery_anenji_bms_balancer
-          total_voltage: sensor.daly_battery_anenji_bms_total_voltage
-          average_cell_voltage: sensor.daly_battery_anenji_bms_average_cell_voltage
-          current: sensor.daly_battery_anenji_bms_current
-          state_of_charge: sensor.daly_battery_anenji_bms_state_of_charge
-          capacity_remaining: sensor.daly_battery_anenji_bms_capacity_remaining
-          charging_cycles: sensor.daly_battery_anenji_bms_charging_cycles
-          power_tube_temperature: sensor.daly_battery_anenji_bms_mosfet_temperature
-          temperature_sensor_1: sensor.daly_battery_anenji_bms_temperature
-          min_voltage_cell: sensor.daly_battery_anenji_bms_min_voltage_cell
-          max_voltage_cell: sensor.daly_battery_anenji_bms_max_voltage_cell
-          errors: sensor.daly_battery_anenji_bms_errors
-          cell_voltage_1: sensor.daly_battery_anenji_bms_cell_voltage_1
-          cell_voltage_2: sensor.daly_battery_anenji_bms_cell_voltage_2
-          cell_voltage_3: sensor.daly_battery_anenji_bms_cell_voltage_3
-          cell_voltage_4: sensor.daly_battery_anenji_bms_cell_voltage_4
-          cell_voltage_5: sensor.daly_battery_anenji_bms_cell_voltage_5
-          cell_voltage_6: sensor.daly_battery_anenji_bms_cell_voltage_6
-          cell_voltage_7: sensor.daly_battery_anenji_bms_cell_voltage_7
-          cell_voltage_8: sensor.daly_battery_anenji_bms_cell_voltage_8
+          delta_cell_voltage: sensor.daly_cell_spread
+          balancing: binary_sensor.daly_balancing
+          balancing_current: sensor.daly_balance_current
+          power: sensor.daly_power
+          charging: binary_sensor.daly_charging
+          charging_power: sensor.daly_charging_power
+          discharging: binary_sensor.daly_discharging
+          discharging_power: sensor.daly_discharging_power
+          balancer: switch.daly_balancer
+          total_voltage: sensor.daly_voltage
+          average_cell_voltage: sensor.daly_average_cell_voltage
+          current: sensor.daly_current
+          state_of_charge: sensor.daly_soc
+          capacity_remaining: sensor.daly_remaining_capacity
+          charging_cycles: sensor.daly_charge_cycles
+          power_tube_temperature: sensor.daly_mosfet_temperature
+          temperature_sensor_1: sensor.daly_temperature
+          min_voltage_cell: sensor.daly_lowest_cell_number
+          max_voltage_cell: sensor.daly_highest_cell_number
+          errors: sensor.daly_errors
+          cell_voltage_1: sensor.daly_cell_1
+          cell_voltage_2: sensor.daly_cell_2
+          cell_voltage_3: sensor.daly_cell_3
+          cell_voltage_4: sensor.daly_cell_4
+          cell_voltage_5: sensor.daly_cell_5
+          cell_voltage_6: sensor.daly_cell_6
+          cell_voltage_7: sensor.daly_cell_7
+          cell_voltage_8: sensor.daly_cell_8
         title: Daly BMS state
         maxCellVoltage: 3.7
         cellColorMode: progress
@@ -66,44 +66,44 @@ sections:
           columns: full
       - type: history-graph
         entities:
-          - entity: sensor.daly_battery_anenji_bms_power
-          - entity: sensor.daly_battery_anenji_bms_charging_power
-          - entity: sensor.daly_battery_anenji_bms_discharging_power
+          - entity: sensor.daly_power
+          - entity: sensor.daly_charging_power
+          - entity: sensor.daly_discharging_power
         logarithmic_scale: false
     column_span: 1
   - type: grid
     cards:
       - type: history-graph
         entities:
-          - entity: sensor.daly_battery_anenji_bms_current
-          - entity: sensor.daly_battery_anenji_bms_total_voltage
+          - entity: sensor.daly_current
+          - entity: sensor.daly_voltage
         logarithmic_scale: false
       - type: history-graph
         entities:
-          - entity: sensor.daly_battery_anenji_bms_average_cell_voltage
+          - entity: sensor.daly_average_cell_voltage
             name: Average
-          - entity: sensor.daly_battery_anenji_bms_cell_voltage_1
+          - entity: sensor.daly_cell_1
             name: Cell 1
-          - entity: sensor.daly_battery_anenji_bms_cell_voltage_2
+          - entity: sensor.daly_cell_2
             name: Cell 2
-          - entity: sensor.daly_battery_anenji_bms_cell_voltage_3
+          - entity: sensor.daly_cell_3
             name: Cell 3
-          - entity: sensor.daly_battery_anenji_bms_cell_voltage_4
+          - entity: sensor.daly_cell_4
             name: Cell 4
-          - entity: sensor.daly_battery_anenji_bms_cell_voltage_5
+          - entity: sensor.daly_cell_5
             name: Cell 5
-          - entity: sensor.daly_battery_anenji_bms_cell_voltage_6
+          - entity: sensor.daly_cell_6
             name: Cell 6
-          - entity: sensor.daly_battery_anenji_bms_cell_voltage_7
+          - entity: sensor.daly_cell_7
             name: Cell 7
-          - entity: sensor.daly_battery_anenji_bms_cell_voltage_8
+          - entity: sensor.daly_cell_8
             name: Cell 8
 badges:
   - type: entity
     show_name: true
     show_state: true
     show_icon: true
-    entity: sensor.daly_battery_anenji_bms_battery_status
+    entity: sensor.daly_status
     name: Battery Status
     state_content:
       - state
@@ -112,38 +112,38 @@ badges:
     show_name: true
     show_state: true
     show_icon: true
-    entity: sensor.daly_battery_anenji_bms_average_cell_voltage
+    entity: sensor.daly_average_cell_voltage
     name: Cell avg. V
     state_content: state
   - type: entity
     show_name: true
     show_state: true
     show_icon: true
-    entity: sensor.daly_battery_anenji_bms_capacity_remaining
+    entity: sensor.daly_remaining_capacity
     name: Remaining Capacity
   - type: entity
     show_name: true
     show_state: true
     show_icon: true
-    entity: sensor.daly_battery_anenji_bms_state_of_charge
+    entity: sensor.daly_soc
     name: Remaining %
   - type: entity
     show_name: true
     show_state: true
     show_icon: true
-    entity: switch.daly_battery_anenji_bms_enable_bluetooth_connection
-    name: Bluetooth connection
+    entity: binary_sensor.daly_online
+    name: Daly online
   - type: entity
     show_name: true
     show_state: false
     show_icon: true
-    entity: button.daly_battery_anenji_bms_restart
+    entity: button.daly_restart
     name: Restart BMS
   - type: entity
     show_name: true
     show_state: true
     show_icon: true
-    entity: sensor.daly_battery_anenji_bms_errors
+    entity: sensor.daly_errors
     name: BMS Report
 header:
   layout: center

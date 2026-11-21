@@ -1,14 +1,194 @@
 substitutions:
-  name: "Anenji BMS"
-  inv_name: "Anenji Inverter"
   device_description: "Monitor a DALY BMS via BLE and Anenji Inverter via modbus (RS485)"
   external_components_source: github://syssi/esphome-daly-bms@7a78b6ba49bd5e2efad6ffcbe6c04bbf4082f2cf
-  refresh_bms: 10s
-  refresh_inverter: 30s
+  refresh_bms: 30s
+  refresh_inverter: 20s
   tx_pin: GPIO16
   rx_pin: GPIO17
 
 globals:
+  # A single formatter shared by all text sensor filters.
+  - id: translate_state
+    type: std::string (*)(std::string_view, bool, bool)
+    initial_value: |-
+      +[](std::string_view text, bool russian, bool is_list) -> std::string {
+        struct Translation {
+          std::string_view english;
+          std::string_view russian;
+        };
+
+        static constexpr Translation translations[] = {
+            // Inverter fault and warning labels.
+            {"Output short circuit", "КЗ на выходе"},
+            {"Battery overvoltage", "Перенапряжение батареи"},
+            {"Battery overcurrent", "Сверхток батареи"},
+            {"DC bus overvoltage", "Перенапряжение шины DC"},
+            {"Inverter overvoltage", "Перенапряжение инвертора"},
+            {"Inverter overcurrent", "Сверхток инвертора"},
+            {"PV overvoltage", "Перенапряжение PV"},
+            {"PV overcurrent", "Сверхток PV"},
+            {"Inverter overheat", "Перегрев инвертора"},
+            {"DC/DC overheat", "Перегрев DC/DC"},
+            {"PV overheat", "Перегрев PV"},
+            {"Output overload", "Перегрузка выхода"},
+            {"Excess inverter DC offset", "Постоянная составляющая инвертора"},
+            {"DC bus undervoltage", "Низкое напряжение шины DC"},
+            {"Inverter undervoltage", "Низкое напряжение инвертора"},
+            {"Reverse inverter power", "Обратная мощность инвертора"},
+            {"DC bus start timeout", "Таймаут пуска шины DC"},
+            {"Incompatible battery", "Несовместимая батарея"},
+            {"Parallel host lost", "Потерян ведущий инвертор"},
+            {"Parallel sync fault", "Сбой синхронизации инверторов"},
+            {"Parallel version mismatch", "Версии инверторов различаются"},
+            {"Output current offset", "Смещение тока выхода"},
+            {"Inverter current offset", "Смещение тока инвертора"},
+            {"Battery current offset", "Смещение тока батареи"},
+            {"PV current offset", "Смещение тока PV"},
+            {"Reserved fault 15", "Резервная ошибка 15"},
+            {"Reserved fault 17", "Резервная ошибка 17"},
+            {"Overheating", "Перегрев"},
+            {"Overload", "Перегрузка"},
+            {"Fan blocked", "Вентилятор заблокирован"},
+            {"Battery undervoltage", "Недонапряжение батареи"},
+            {"Battery voltage low", "Низкое напряжение батареи"},
+            {"Battery disconnected", "Батарея отключена"},
+            {"Parallel battery mismatch", "Различие батарей в параллели"},
+            {"Output derating", "Ограничение мощности выхода"},
+            {"Parallel link lost", "Потеряна связь между инверторами"},
+            {"Parallel mode mismatch", "Режимы инверторов различаются"},
+            {"Mains waveform fault", "Искажение формы напряжения сети"},
+            {"Mains undervoltage", "Низкое напряжение сети"},
+            {"Mains overfrequency", "Высокая частота сети"},
+            {"Mains underfrequency", "Низкая частота сети"},
+            {"PV undervoltage", "Низкое напряжение PV"},
+            {"Low PV energy", "Мало энергии PV"},
+            {"Battery equalizing", "Выравнивание батареи"},
+            {"Reserved warning 1", "Резервное предупреждение 1"},
+            {"Reserved warning 3", "Резервное предупреждение 3"},
+
+            // Daly alarm labels. Severity prefixes are handled separately.
+            {"Charging MOS over-temperature warning", "Перегрев MOSFET заряда"},
+            {"Discharging MOS over-temperature warning", "Перегрев MOSFET разряда"},
+            {"Charging MOS temperature sensor failure", "Сбой термодатчика MOSFET заряда"},
+            {"Discharging MOS temperature sensor failure", "Сбой термодатчика MOSFET разряда"},
+            {"Charging MOS adhesion failure", "Залипание MOSFET заряда"},
+            {"Discharging MOS adhesion failure", "Залипание MOSFET разряда"},
+            {"Charging MOS circuit fault", "Сбой цепи MOSFET заряда"},
+            {"Discharging MOS circuit fault", "Сбой цепи MOSFET разряда"},
+            {"AFE acquisition chip failure", "Сбой микросхемы AFE"},
+            {"Single unit collection is offline", "Нет связи с модулем измерений"},
+            {"Single temperature sensor failure", "Сбой термодатчика ячейки"},
+            {"EEPROM storage failure", "Сбой EEPROM"},
+            {"RTC clock failure", "Сбой часов RTC"},
+            {"Precharge failed", "Сбой предзаряда"},
+            {"Vehicle communication failed", "Сбой связи с транспортным средством"},
+            {"Internal network communication module failure", "Сбой внутреннего модуля связи"},
+            {"Reserved", "Резерв"},
+            {"Charging current too high", "Высокий ток заряда"},
+            {"Discharging current too low", "Низкий ток разряда"},
+            {"SOC too high", "Высокий SOC"},
+            {"SOC too low", "Низкий SOC"},
+            {"Voltage difference too high", "Большой разброс напряжений"},
+            {"Temperature difference too high", "Большой разброс температур"},
+            {"Cell voltage too high", "Высокое напряжение ячейки"},
+            {"Cell voltage too low", "Низкое напряжение ячейки"},
+            {"Total voltage too high", "Высокое напряжение батареи"},
+            {"Total voltage too low", "Низкое напряжение батареи"},
+            {"Charging temperature too high", "Высокая температура при заряде"},
+            {"Charging temperature too low", "Низкая температура при заряде"},
+            {"Discharging temperature too high", "Высокая температура при разряде"},
+            {"Discharging temperature too low", "Низкая температура при разряде"},
+
+            // Operating modes and BLE setup states.
+            {"Power On", "Включение"},
+            {"Standby", "Ожидание"},
+            {"Mains", "От сети"},
+            {"Off-Grid", "Автономно"},
+            {"Bypass", "Байпас"},
+            {"Charging", "Зарядка"},
+            {"Fault", "Авария"},
+            {"Unknown", "Неизвестно"},
+            {"Idle", "Ожидание"},
+            {"Discharging", "Разрядка"},
+            {"Offline", "Нет связи"},
+            {"Scanning...", "Поиск…"},
+            {"Scanning for 12 seconds", "Идёт поиск (12 секунд)"},
+            {"No Daly found", "Daly не найдена"},
+            {"Wake the BMS and scan again", "Активируйте BMS и повторите поиск"},
+            {"Select a device number", "Выберите номер устройства"},
+            {"Daly saved; scan to replace it", "Daly сохранена. Для замены запустите поиск"},
+            {"Scan to find your Daly", "Запустите поиск Daly"},
+            {"Connecting; waiting for Daly telemetry", "Подключение. Ожидаем данные Daly"},
+            {"BLE disconnect timed out; restart the ESP32 and retry", "BLE не отключился вовремя. Перезапустите ESP32 и повторите"},
+            {"BLE disconnect timed out; restart the ESP32", "BLE не отключился вовремя. Перезапустите ESP32"},
+            {"No telemetry; the previous Daly choice was kept", "Нет данных. Сохранена прежняя Daly"},
+            {"Scan and choose a number from the results", "Запустите поиск и выберите номер из списка"},
+        };
+
+        const auto translate_text = [russian](std::string_view text) -> std::string {
+          if (!russian)
+            return std::string(text);
+
+          constexpr std::string_view saved_prefix = "Saved Daly ";
+          if (text.starts_with(saved_prefix))
+            return "Сохранена Daly " + std::string(text.substr(saved_prefix.size()));
+
+          std::string_view label = text;
+          std::string_view severity;
+          if (label.starts_with("Warning: ")) {
+            label.remove_prefix(std::string_view("Warning: ").size());
+            severity = "Предупреждение: ";
+          } else if (label.starts_with("Critical: ")) {
+            label.remove_prefix(std::string_view("Critical: ").size());
+            severity = "Авария: ";
+          }
+
+          for (const auto &entry : translations) {
+            if (entry.english == label) {
+              std::string translated(severity);
+              translated.append(entry.russian);
+              return translated;
+            }
+          }
+          return std::string(text);
+        };
+
+        if (!is_list)
+          return translate_text(text);
+
+        std::string result;
+        while (!text.empty()) {
+          const auto end = text.find(';');
+          auto label = text.substr(0, end);
+          if (end == std::string_view::npos)
+            text = {};
+          else
+            text.remove_prefix(end + 1);
+
+          while (!label.empty() && label.front() == ' ')
+            label.remove_prefix(1);
+          if (label.empty())
+            continue;
+
+          const std::string translated = translate_text(label);
+          const std::string_view separator = result.empty() ? "" : "; ";
+          // Reserve the truncation marker and keep complete UTF-8 labels.
+          if (result.size() + separator.size() + translated.size() > 250) {
+            result.append(separator);
+            result += "...";
+            break;
+          }
+          result.append(separator);
+          result += translated;
+        }
+        return result;
+      }
+
+  - id: russian_language
+    type: bool
+    restore_value: true
+    initial_value: "false"
+
   - id: saved_daly_address
     type: uint64_t
     restore_value: true
@@ -36,25 +216,32 @@ globals:
 
 esphome:
   name: anenji-daly
+  friendly_name: Gateway
   min_version: 2026.11.0
-  name_add_mac_suffix: true
   comment: ${device_description}
   project:
     name: "alidonet.esphome-bms-inverter"
-    version: "1.3.261120"
+    version: "1.4.261121"
   on_boot:
     priority: -100
     then:
       - lambda: |-
           const uint64_t address = id(saved_daly_address);
+          id(language_select).update();
           id(bms0).set_status_registers(id(daly_status_registers));
           id(daly_register_mode).update();
           id(client0).set_address(address);
           id(client0).set_enabled(address != 0);
           id(daly_setup_status).publish_state(address != 0 ? "Daly saved; scan to replace it" : "Scan to find your Daly");
+      - select.set:
+          id: daly_poll_interval
+          option: !lambda return id(daly_poll_interval).current_option().str();
+      - select.set:
+          id: inverter_poll_interval
+          option: !lambda return id(inverter_poll_interval).current_option().str();
   devices:
     - id: device_bms
-      name: "Daly Battery"
+      name: "Daly"
       relation: via
     - id: device_inverter
       name: "Anenji"
@@ -98,6 +285,9 @@ web_server:
   local: True
   port: 80
   sorting_groups:
+    - id: polling_group
+      name: Polling
+      sorting_weight: -5
     - id: daly_setup_group
       name: Daly setup
       sorting_weight: -10
@@ -116,7 +306,8 @@ api:
 
 light:
   - platform: status_led
-    name: "ESP32 LED"
+    name: "Status LED"
+    entity_category: config
     id: led_output
     # device_id: device_esp
     pin: GPIO2
@@ -312,39 +503,39 @@ daly_bms_ble:
 binary_sensor:
 
   - platform: template
-    name: "${name} Online"
+    name: "Online"
+    entity_category: diagnostic
     device_id: device_bms
     device_class: connectivity
     lambda: !lambda |-
       return (id(global_bms_online));
-    entity_category: "diagnostic"
 
   - platform: template
-    name: "${inv_name} Online"
+    name: "Online"
+    entity_category: diagnostic
     device_id: device_inverter
     device_class: connectivity
     lambda: !lambda |-
       return (id(global_inverter_online));
-    entity_category: "diagnostic"
 
 # ============== ble ===========
 
   - platform: daly_bms_ble
     daly_bms_ble_id: bms0
     balancing:
-      name: "${name} balancing"
+      name: "Balancing"
       device_id: device_bms
     charging:
-      name: "${name} charging"
+      name: "Charging"
       device_id: device_bms
     discharging:
-      name: "${name} discharging"
+      name: "Discharging"
       device_id: device_bms
 
 button:
 
   - platform: template
-    name: "Find Daly devices"
+    name: "Find Daly"
     entity_category: config
     web_server:
       sorting_group_id: daly_setup_group
@@ -361,7 +552,8 @@ button:
 
   # Exit the fault mode                                           Uint  426   W   1: Exit the fault state
   - platform: template
-    name: "${inv_name} exit fault state"
+    name: "Clear fault"
+    entity_category: config
     device_id: device_inverter
     icon: mdi:restore
     on_press:
@@ -378,23 +570,25 @@ button:
     daly_bms_ble_id: bms0
     # Retrieves the BMS settings and prints them in the ESPHome logs
     retrieve_settings:
-      name: "${name} retrieve settings"
+      name: "Log settings"
+      entity_category: config
       device_id: device_bms
     # Restarts the BMS
     restart:
-      name: "${name} restart"
+      name: "Restart"
+      entity_category: config
       device_id: device_bms
     # # Shuts down the BMS
     # shutdown:
-    #   name: "${name} shutdown"
+    #   name: "Shutdown"
       # device_id: device_bms
     # # Resets the BMS to the factory settings
     # factory_reset:
-    #   name: "${name} factory reset"
+    #   name: "Factory reset"
       # device_id: device_bms
     # # Resets the BMS current to zero
     # reset_current:
-    #   name: "${name} reset current"
+    #   name: "Reset current"
       # device_id: device_bms
 
 sensor:
@@ -402,10 +596,10 @@ sensor:
   - platform: uptime
     id: esp_uptime
     type: seconds
-    name: "Uptime Sensor"
+    name: "Uptime"
+    entity_category: "diagnostic"
     # device_id: device_esp 
     update_interval: 60s
-    entity_category: "diagnostic"
 
   # - platform: ble_rssi
   #   id: ble_rssi_value
@@ -416,14 +610,14 @@ sensor:
 
   - platform: wifi_signal
     id: wifi_signal_db
-    name: "WiFi signal value"
-    update_interval: 60s
+    name: "WiFi RSSI"
     entity_category: "diagnostic"
+    update_interval: 60s
     # device_id: device_esp
 
 # === rs485 ===
   - platform: total_daily_energy
-    name: "${inv_name} PV energy today"
+    name: "PV energy today"
     device_id: device_inverter
     restore: true
     device_class: energy
@@ -443,7 +637,7 @@ sensor:
     accuracy_decimals: 0
 
   - platform: template
-    name: "${inv_name} discharging power"
+    name: "Discharging power"
     device_id: device_inverter
     id: smg0_discharging_power
     unit_of_measurement: "W"
@@ -460,7 +654,7 @@ sensor:
       return (power < 0.0f) ? -power : 0.0f;
 
   - platform: template
-    name: "${inv_name} charging power"
+    name: "Charging power"
     device_id: device_inverter
     id: smg0_charging_power
     unit_of_measurement: "W"
@@ -479,7 +673,9 @@ sensor:
   # Fault code                                                    ULong 100 2 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} fault code"
+    name: "Fault code"
+    entity_category: diagnostic
+    disabled_by_default: true
     device_id: device_inverter
     address: 100
     register_type: holding
@@ -490,7 +686,9 @@ sensor:
   # Warning code                                                  ULong 108 2 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} warning code"
+    name: "Warning code"
+    entity_category: diagnostic
+    disabled_by_default: true
     device_id: device_inverter
     address: 108
     register_type: holding
@@ -507,7 +705,9 @@ sensor:
   #                                                                             6: Fault
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} operation mode id"
+    name: "Mode ID"
+    entity_category: diagnostic
+    disabled_by_default: true
     device_id: device_inverter
     address: 201
     register_type: holding
@@ -518,7 +718,7 @@ sensor:
   # Effective mains voltage                              0.1V     Int   202 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} ac voltage"
+    name: "Grid voltage"
     device_id: device_inverter
     address: 202
     register_type: holding
@@ -538,7 +738,7 @@ sensor:
   # Mains Frequency                                      0.01Hz   Int   203 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} ac frequency"
+    name: "Grid frequency"
     device_id: device_inverter
     address: 203
     register_type: holding
@@ -553,7 +753,7 @@ sensor:
   # Average mains power                                  1W       Int   204 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} average mains power"
+    name: "Grid power"
     device_id: device_inverter
     address: 204
     register_type: holding
@@ -566,7 +766,7 @@ sensor:
   # Effective inverter voltage                           0.1V     Int   205 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} effective inverter voltage"
+    name: "Inverter voltage"
     device_id: device_inverter
     address: 205
     register_type: holding
@@ -581,7 +781,7 @@ sensor:
   # Effective inverter current                           0.1A     Int   206 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} effective inverter current"
+    name: "Inverter current"
     device_id: device_inverter
     address: 206
     register_type: holding
@@ -596,7 +796,7 @@ sensor:
   # Inverter frequency                                   0.01Hz   Int   207 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} inverter frequency"
+    name: "Inverter frequency"
     device_id: device_inverter
     address: 207
     register_type: holding
@@ -611,7 +811,7 @@ sensor:
   # Average inverter power                               1W       Int   208 1 R Positive numbers indicate inverter output, negative numbers indicate inverter input
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} average inverter power"
+    name: "Inverter power"
     device_id: device_inverter
     address: 208
     register_type: holding
@@ -624,7 +824,7 @@ sensor:
   # Inverter charging power                              1W       Int   209 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} inverter charging power"
+    name: "Charger power"
     device_id: device_inverter
     address: 209
     register_type: holding
@@ -637,7 +837,7 @@ sensor:
   # Output effective voltage                             0.1V     Int   210 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} output effective voltage"
+    name: "Load voltage"
     device_id: device_inverter
     address: 210
     register_type: holding
@@ -652,7 +852,7 @@ sensor:
   # Output effective Current                             0.1A     Int   211 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} output effective Current"
+    name: "Load current"
     device_id: device_inverter
     address: 211
     register_type: holding
@@ -667,7 +867,7 @@ sensor:
   # Output frequency                                     0.01Hz   Int   212 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} output frequency"
+    name: "Load frequency"
     device_id: device_inverter
     address: 212
     register_type: holding
@@ -682,7 +882,7 @@ sensor:
   # Output active power                                  1W       Int   213 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} output active power"
+    name: "Load power"
     device_id: device_inverter
     address: 213
     register_type: holding
@@ -695,7 +895,9 @@ sensor:
   # Output apparent power                                1VA      Int   214 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} output apparent power"
+    name: "Load apparent power"
+    entity_category: diagnostic
+    disabled_by_default: true
     device_id: device_inverter
     address: 214
     register_type: holding
@@ -708,7 +910,7 @@ sensor:
   # Battery average voltage                              0.1V     Int   215 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} battery average voltage"
+    name: "Battery voltage"
     device_id: device_inverter
     address: 215
     register_type: holding
@@ -723,7 +925,7 @@ sensor:
   # Battery average Current                              0.1A     Int   216 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} battery average current"
+    name: "Battery current"
     device_id: device_inverter
     address: 216
     register_type: holding
@@ -738,7 +940,7 @@ sensor:
   # Battery average power                                1W       Int   217 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} battery average power"
+    name: "Battery power"
     device_id: device_inverter
     id: smg0_battery_average_power
     address: 217
@@ -760,7 +962,7 @@ sensor:
   # PV average voltage                                   0.1V     Int   219 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} pv average voltage"
+    name: "PV voltage"
     device_id: device_inverter
     address: 219
     register_type: holding
@@ -775,7 +977,7 @@ sensor:
   # PV average current                                   0.1A     Int   220 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} pv average current"
+    name: "PV current"
     device_id: device_inverter
     address: 220
     register_type: holding
@@ -791,7 +993,7 @@ sensor:
   - platform: modbus_controller
     modbus_controller_id: smg0
     id: smg0_pv_average_power
-    name: "${inv_name} pv average power"
+    name: "PV power"
     device_id: device_inverter
     address: 223
     register_type: holding
@@ -818,7 +1020,7 @@ sensor:
   # PV charging average power                            1W       Int   224 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} pv charging average power"
+    name: "PV charge power"
     device_id: device_inverter
     address: 224
     register_type: holding
@@ -831,7 +1033,7 @@ sensor:
   # Load percentage                                      1%       Int   225 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} load percentage"
+    name: "Load"
     device_id: device_inverter
     address: 225
     register_type: holding
@@ -844,7 +1046,7 @@ sensor:
   # DCDC Temperature                                     1°C      Int   226 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} dcdc temperature"
+    name: "DC-DC temperature"
     device_id: device_inverter
     address: 226
     register_type: holding
@@ -857,7 +1059,7 @@ sensor:
   # Inverter Temperature                                 1°C      Int   227 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} inverter temperature"
+    name: "Inverter temperature"
     device_id: device_inverter
     address: 227
     register_type: holding
@@ -870,7 +1072,7 @@ sensor:
   # Battery state of charge                              1%       UInt  229 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} battery state of charge"
+    name: "Battery SOC"
     device_id: device_inverter
     address: 229
     register_type: holding
@@ -883,7 +1085,9 @@ sensor:
   # Battery average current                              0.1A     Int   232 1 R Positive number means charging, negative number means discharging
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} battery average current2"
+    name: "Battery current (reg. 232)"
+    entity_category: diagnostic
+    disabled_by_default: true
     device_id: device_inverter
     address: 232
     register_type: holding
@@ -898,7 +1102,7 @@ sensor:
   # Inverter charging average current                    0.1A     Int   233 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} inverter charging average current"
+    name: "Charger current"
     device_id: device_inverter
     address: 233
     register_type: holding
@@ -913,7 +1117,7 @@ sensor:
   # PV charging average current                          0.1A     Int   234 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} pv charging average current"
+    name: "PV charge current"
     device_id: device_inverter
     address: 234
     register_type: holding
@@ -928,7 +1132,9 @@ sensor:
   # Rated power                                           W       Uint  643 1 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} rated power"
+    name: "Rated power"
+    entity_category: diagnostic
+    disabled_by_default: true
     device_id: device_bms
     address: 643
     register_type: holding
@@ -943,7 +1149,7 @@ sensor:
   - platform: daly_bms_ble
     daly_bms_ble_id: bms0
     total_voltage:
-      name: "${name} total voltage"
+      name: "Voltage"
       device_id: device_bms
       on_raw_value:
         - script.execute: watch_bms_telemetry
@@ -957,85 +1163,92 @@ sensor:
           - delay: 40ms
           - light.turn_off: led_output      
     current:
-      name: "${name} current"
+      name: "Current"
       device_id: device_bms
     power:
-      name: "${name} power"
+      name: "Power"
       device_id: device_bms
     charging_power:
-      name: "${name} charging power"
+      name: "Charging power"
       device_id: device_bms
     discharging_power:
-      name: "${name} discharging power"
+      name: "Discharging power"
       device_id: device_bms
     state_of_charge:
-      name: "${name} state of charge"
+      name: "SOC"
       device_id: device_bms
     charging_cycles:
-      name: "${name} charging cycles"
+      name: "Charge cycles"
+      entity_category: diagnostic
       device_id: device_bms
     min_cell_voltage:
-      name: "${name} min cell voltage"
+      name: "Min cell voltage"
       device_id: device_bms
     max_cell_voltage:
-      name: "${name} max cell voltage"
+      name: "Max cell voltage"
       device_id: device_bms
     min_voltage_cell:
-      name: "${name} min voltage cell"
+      name: "Lowest cell number"
       device_id: device_bms
     max_voltage_cell:
-      name: "${name} max voltage cell"
+      name: "Highest cell number"
       device_id: device_bms
     delta_cell_voltage:
-      name: "${name} delta cell voltage"
+      name: "Cell spread"
       device_id: device_bms
     average_cell_voltage:
-      name: "${name} average cell voltage"
+      name: "Average cell voltage"
       device_id: device_bms
     temperature_1:
-      name: "${name} temperature"
+      name: "Temperature"
       device_id: device_bms
     cell_voltage_1:
-      name: "${name} cell voltage 1"
+      name: "Cell 1"
       device_id: device_bms
     cell_voltage_2:
-      name: "${name} cell voltage 2"
+      name: "Cell 2"
       device_id: device_bms
     cell_voltage_3:
-      name: "${name} cell voltage 3"
+      name: "Cell 3"
       device_id: device_bms
     cell_voltage_4:
-      name: "${name} cell voltage 4"
+      name: "Cell 4"
       device_id: device_bms
     cell_voltage_5:
-      name: "${name} cell voltage 5"
+      name: "Cell 5"
       device_id: device_bms
     cell_voltage_6:
-      name: "${name} cell voltage 6"
+      name: "Cell 6"
       device_id: device_bms
     cell_voltage_7:
-      name: "${name} cell voltage 7"
+      name: "Cell 7"
       device_id: device_bms
     cell_voltage_8:
-      name: "${name} cell voltage 8"
+      name: "Cell 8"
       device_id: device_bms
     cell_count:
-      name: "${name} cell count"
+      name: "Cell count"
+      entity_category: diagnostic
+      disabled_by_default: true
       device_id: device_bms
     temperature_sensors:
-      name: "${name} temperature sensors"
+      name: "Temperature sensor count"
+      entity_category: diagnostic
+      disabled_by_default: true
       device_id: device_bms
     capacity_remaining:
-      name: "${name} capacity remaining"
+      name: "Remaining capacity"
       device_id: device_bms
     balance_current:
-      name: "${name} balance current"
+      name: "Balance current"
       device_id: device_bms
     mosfet_temperature:
-      name: "${name} mosfet temperature"
+      name: "MOSFET temperature"
+      entity_category: diagnostic
       device_id: device_bms
     board_temperature:
-      name: "${name} board temperature"
+      name: "Board temperature"
+      entity_category: diagnostic
       device_id: device_bms
 
 number:
@@ -1045,7 +1258,8 @@ number:
   # Output voltage                                                0.1V    Uint  320 1 R/W
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} output voltage"
+    name: "Output voltage setpoint"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 320
@@ -1055,7 +1269,6 @@ number:
     max_value: 240
     step: 10
     unit_of_measurement: "V"
-    entity_category: config
     icon: mdi:cog
     lambda: "return x * 0.1f;"
     write_lambda: |-
@@ -1066,7 +1279,8 @@ number:
   # Output frequency setting                                      0.01Hz  Uint  321 1 R/W
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} output frequency setting"
+    name: "Output frequency setpoint"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 321
@@ -1076,7 +1290,6 @@ number:
     max_value: 60
     step: 10
     unit_of_measurement: "Hz"
-    entity_category: config
     icon: mdi:cog
     lambda: "return x * 0.01f;"
     write_lambda: |-
@@ -1087,7 +1300,9 @@ number:
   # Battery overvoltage protection point                          0.1V    Uint  323 1 R/W
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} battery overvoltage protection point"
+    name: "Battery overvoltage limit"
+    entity_category: config
+    disabled_by_default: true
     device_id: device_inverter
     use_write_multiple: true
     address: 323
@@ -1097,7 +1312,6 @@ number:
     # max_value: 100.0
     step: 0.1
     unit_of_measurement: "V"
-    entity_category: config
     icon: mdi:battery-high
     lambda: "return x * 0.1f;"
     write_lambda: |-
@@ -1106,7 +1320,8 @@ number:
   # Max charging voltage                                          0.1V    Uint  324 1 R/W
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} max charging voltage"
+    name: "Bulk charge voltage"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 324
@@ -1117,7 +1332,6 @@ number:
     max_value: 31.0
     step: 0.1
     unit_of_measurement: "V"
-    entity_category: config
     icon: mdi:battery-high
     lambda: "return x * 0.1f;"
     write_lambda: |-
@@ -1126,7 +1340,8 @@ number:
   # Floating charging voltage                                     0.1V    Uint  325 1 R/W
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} floating charging voltage"
+    name: "Float voltage"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 325
@@ -1137,7 +1352,6 @@ number:
     max_value: 31.0
     step: 0.1
     unit_of_measurement: "V"
-    entity_category: config
     icon: mdi:battery
     lambda: "return x * 0.1f;"
     write_lambda: |-
@@ -1146,7 +1360,9 @@ number:
   # Battery discharge recovery point in mains mode                0.1V    Uint  326 1 R/W
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} battery discharge recovery point in mains mode"
+    name: "Battery recovery voltage"
+    entity_category: config
+    disabled_by_default: true
     device_id: device_inverter
     use_write_multiple: true
     address: 326
@@ -1156,7 +1372,6 @@ number:
     # max_value: 100.0
     step: 0.1
     unit_of_measurement: "V"
-    entity_category: config
     icon: mdi:battery-low
     lambda: "return x * 0.1f;"
     write_lambda: |-
@@ -1165,7 +1380,9 @@ number:
   # Battery low voltage protection point in mains mode            0.1V    Uint  327 1 R/W
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} battery low voltage protection point in mains mode"
+    name: "Low voltage limit (mains)"
+    entity_category: config
+    disabled_by_default: true
     device_id: device_inverter
     use_write_multiple: true
     address: 327
@@ -1175,7 +1392,6 @@ number:
     # max_value: 100.0
     step: 0.1
     unit_of_measurement: "V"
-    entity_category: config
     icon: mdi:battery-low
     lambda: "return x * 0.1f;"
     write_lambda: |-
@@ -1184,7 +1400,9 @@ number:
   # Battery low voltage protection point in off-grid mode          0.1V           Uint  329 1 R/W
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} battery low voltage protection point in off-grid mode"
+    name: "Low voltage limit (off-grid)"
+    entity_category: config
+    disabled_by_default: true
     device_id: device_inverter
     use_write_multiple: true
     address: 329
@@ -1194,7 +1412,6 @@ number:
     # max_value: 100.0
     step: 0.1
     unit_of_measurement: "V"
-    entity_category: config
     icon: mdi:battery-low
     lambda: "return x * 0.1f;"
     write_lambda: |-
@@ -1203,7 +1420,8 @@ number:
   # Maximum charging current                                      0.1A    Uint  332 1 R/W
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} maximum charging current"
+    name: "Max charge current"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 332
@@ -1213,7 +1431,6 @@ number:
     max_value: 100.0
     step: 0.1
     unit_of_measurement: "A"
-    entity_category: config
     icon: mdi:battery-charging
     lambda: "return x * 0.1f;"
     write_lambda: |-
@@ -1222,7 +1439,8 @@ number:
   # Maximum mains charging current                                0.1A    Uint  333 1 R/W
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} maximum mains charging current"
+    name: "Max AC charge current"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 333
@@ -1232,7 +1450,6 @@ number:
     max_value: 80.0
     step: 0.1
     unit_of_measurement: "A"
-    entity_category: config
     icon: mdi:battery-charging
     lambda: "return x * 0.1f;"
     write_lambda: |-
@@ -1241,7 +1458,9 @@ number:
   # Eq Charging voltage                                           0.1V    Uint  334 1 R/W
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} Eq Charging voltage"
+    name: "Equalization voltage"
+    entity_category: config
+    disabled_by_default: true
     device_id: device_inverter
     use_write_multiple: true
     address: 334
@@ -1252,7 +1471,6 @@ number:
     max_value: 31.0
     step: 0.1
     unit_of_measurement: "V"
-    entity_category: config
     icon: mdi:battery
     lambda: "return x * 0.1f;"
     write_lambda: |-
@@ -1261,7 +1479,9 @@ number:
   # Battery equalization time                                     min     Uint  335 1 R/W Range: 0~900
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} battery equalization time"
+    name: "Equalization time"
+    entity_category: config
+    disabled_by_default: true
     device_id: device_inverter
     use_write_multiple: true
     address: 335
@@ -1271,13 +1491,14 @@ number:
     max_value: 900.0
     step: 1
     unit_of_measurement: "min"
-    entity_category: config
     icon: mdi:timer
 
   # Equalization Timeout exit                                     min     Uint  336 1 R/W Range: 0~900
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} equalization Timeout exit"
+    name: "Equalization timeout"
+    entity_category: config
+    disabled_by_default: true
     device_id: device_inverter
     use_write_multiple: true
     address: 336
@@ -1287,13 +1508,14 @@ number:
     max_value: 900.0
     step: 1
     unit_of_measurement: "min"
-    entity_category: config
     icon: mdi:timer
 
   # Two equalization charging intervals                           day     Uint  337 1 R/W Range: 1~90
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} two equalization charging intervals"
+    name: "Equalization interval"
+    entity_category: config
+    disabled_by_default: true
     device_id: device_inverter
     use_write_multiple: true
     address: 337
@@ -1303,13 +1525,13 @@ number:
     max_value: 90.0
     step: 1
     unit_of_measurement: "day"
-    entity_category: config
     icon: mdi:timer
 
   # SOC point back to utility source                           %       Uint  341 1 R/W Value Menu 43 minimum setting value must be more than the value of program 45
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} SOC point back to utility"
+    name: "SOC to grid"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 341
@@ -1319,13 +1541,13 @@ number:
     max_value: 100.0
     step: 1
     unit_of_measurement: "%"
-    entity_category: config
     icon: mdi:battery-alert
 
   # SOC point back to battery                        %       Uint  342 1 R/W Value Menu 44 60%~100% Settable
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} SOC point back to battery"
+    name: "SOC to battery"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 342
@@ -1335,13 +1557,14 @@ number:
     max_value: 100.0
     step: 1
     unit_of_measurement: "%"
-    entity_category: config
     icon: mdi:battery-high
 
   # Low DC cut-off SOC                 %       Uint  343 1 R/W Value Menu 45 3%~30% the max setting value must be less than the value of program 43.
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} Low DC cut-off SOC"
+    name: "Low SOC cutoff"
+    entity_category: config
+    disabled_by_default: true
     device_id: device_inverter
     use_write_multiple: true
     address: 343
@@ -1351,7 +1574,6 @@ number:
     max_value: 100.0
     step: 1
     unit_of_measurement: "%"
-    entity_category: config
     icon: mdi:battery-low
 
 # ====== ble ==========
@@ -1359,7 +1581,9 @@ number:
   - platform: daly_bms_ble
     daly_bms_ble_id: bms0
     state_of_charge_setting:
-      name: "${name} state of charge setting"
+      name: "Set SOC"
+      entity_category: config
+      disabled_by_default: true
       device_id: device_bms
 
 switch:
@@ -1369,7 +1593,8 @@ switch:
   # LCD automatically returns to the homepage                     Uint  306 1 R/W 0: Do not return automatically, 1: Automatically return after 1 minute
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} lcd automatically returns to the homepage"
+    name: "LCD auto-return"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 306
@@ -1380,7 +1605,8 @@ switch:
   # Energy-saving mode                                            Uint  307 1 R/W 0: Energy-saving mode is off, 1: Energy-saving mode is on
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} energy-saving mode"
+    name: "Energy saving"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 307
@@ -1391,7 +1617,8 @@ switch:
   # Overload automatic restart                                    Uint  308 1 R/W 0: Overload failure will not restart, 1: Automatic restart after overload failure
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} overload automatic restart"
+    name: "Restart after overload"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 308
@@ -1402,7 +1629,8 @@ switch:
   # Over temperature automatic restart                            Uint  309 1 R/W 0: Over temperature failure will not restart, 1: Automatic restart after over-temperature fault
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} over temperature automatic restart"
+    name: "Restart after overheating"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 309
@@ -1413,7 +1641,8 @@ switch:
   # Overload transfer to bypass enabled                           Uint  310 1 R/W 0: Disable, 1: Enable
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} overload transfer to bypass enabled"
+    name: "Overload bypass"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 310
@@ -1424,7 +1653,9 @@ switch:
   # Battery Eq mode is enabled                                    Uint  313 1 R/W 0: Disable, 1: Enable
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} battery Eq mode is enabled"
+    name: "Equalization"
+    entity_category: config
+    disabled_by_default: true
     device_id: device_inverter
     use_write_multiple: true
     address: 313
@@ -1435,7 +1666,9 @@ switch:
   # Remote switch                                                 Uint  420 1 R/W 0: Remote shutdown, 1: Remote turn-on
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} remote switch"
+    name: "Remote power"
+    entity_category: config
+    disabled_by_default: true
     device_id: device_inverter
     use_write_multiple: true
     address: 420
@@ -1448,18 +1681,21 @@ switch:
   - platform: daly_bms_ble
     daly_bms_ble_id: bms0
     balancer:
-      name: "${name} balancer"
+      name: "Balancer"
+      entity_category: config
       device_id: device_bms
     charging:
-      name: "${name} charging"
+      name: "Charging"
+      entity_category: config
       device_id: device_bms
     discharging:
-      name: "${name} discharging"
+      name: "Discharging"
+      entity_category: config
       device_id: device_bms
 
   - platform: template
-    name: "${name} enable bluetooth connection"
-    device_id: device_bms
+    name: "Daly connection"
+    entity_category: config
     id: ble_client_switch0
     lambda: return id(client0).enabled;
     turn_on_action:
@@ -1474,6 +1710,8 @@ text_sensor:
   - platform: template
     id: daly_devices_found
     name: "Daly devices found"
+    filters:
+      - lambda: return id(translate_state)(x, id(russian_language), false);
     entity_category: diagnostic
     update_interval: never
     web_server:
@@ -1483,6 +1721,8 @@ text_sensor:
   - platform: template
     id: daly_setup_status
     name: "Daly setup status"
+    filters:
+      - lambda: return id(translate_state)(x, id(russian_language), false);
     entity_category: diagnostic
     update_interval: never
     web_server:
@@ -1494,7 +1734,11 @@ text_sensor:
   # Fault code                                                    ULong 100 2 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} fault"
+    name: "Fault"
+    id: inverter_fault_text
+    filters:
+      - lambda: return id(translate_state)(x, id(russian_language), true);
+    entity_category: diagnostic
     device_id: device_inverter
     address: 100
     register_type: holding
@@ -1551,7 +1795,11 @@ text_sensor:
   # Warning code                                                  ULong 108 2 R
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} warning"
+    name: "Warning"
+    id: inverter_warning_text
+    filters:
+      - lambda: return id(translate_state)(x, id(russian_language), true);
+    entity_category: diagnostic
     device_id: device_inverter
     address: 108
     register_type: holding
@@ -1600,7 +1848,10 @@ text_sensor:
   # Operation Mode                                                UInt  201 1 R 0: Power On, 1: Standby, 2: Mains, 3: Off-Grid, 4: Bypass, 5: Charging, 6: Fault
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} operation mode"
+    name: "Mode"
+    id: inverter_mode_text
+    filters:
+      - lambda: return id(translate_state)(x, id(russian_language), false);
     device_id: device_inverter
     address: 201
     register_type: holding
@@ -1620,41 +1871,90 @@ text_sensor:
       return std::string("Unknown");
 
   # Operation Mode                                                UInt  201 1 R 0: Power On, 1: Standby, 2: Mains, 3: Off-Grid, 4: Bypass, 5: Charging, 6: Fault
-  - platform: modbus_controller
-    modbus_controller_id: smg0
-    name: "${inv_name} operation mode desc"
-    device_id: device_inverter
-    address: 201
-    register_type: holding
-    raw_encode: HEXBYTES
-    icon: mdi:information
-    lambda: |-
-      uint16_t value = modbus::helpers::word_from_hex_str(x, 0);
-      switch (value) {
-        case 0: return std::string("Питание включено");
-        case 1: return std::string("Ожидание");
-        case 2: return std::string("Питание от сети");
-        case 3: return std::string("Автономный режим");
-        case 4: return std::string("Байпас");
-        case 5: return std::string("Зарядка");
-        case 6: return std::string("Сбой");
-      }
-      return std::string("Выключен/Неизвестно");
-
 # ======== ble =======
 
   - platform: daly_bms_ble
     daly_bms_ble_id: bms0
     battery_status:
-      name: "${name} battery status"
+      name: "Status"
+      id: daly_battery_status_text
+      filters:
+        - lambda: return id(translate_state)(x, id(russian_language), false);
       device_id: device_bms
     # The component decodes this text directly from the original 64-bit mask.
     errors:
-      name: "${name} errors"
+      name: "Errors"
+      id: daly_errors_text
+      filters:
+        - lambda: return id(translate_state)(x, id(russian_language), true);
+      entity_category: diagnostic
       device_id: device_bms
 
 
 select:
+
+  - platform: template
+    id: daly_poll_interval
+    name: "Daly poll interval"
+    entity_category: config
+    options: &poll_intervals ["5 s", "10 s", "15 s", "20 s", "30 s", "45 s", "60 s", "90 s", "120 s"]
+    initial_option: "30 s"
+    optimistic: true
+    restore_value: true
+    web_server:
+      sorting_group_id: polling_group
+    set_action:
+      - lambda: |-
+          const uint32_t interval_ms = std::strtoul(x.c_str(), nullptr, 10) * 1000u;
+          if (interval_ms == id(bms0).get_update_interval())
+            return;
+          id(bms0).stop_poller();
+          id(bms0).set_update_interval(interval_ms);
+          id(bms0).start_poller();
+
+  - platform: template
+    id: inverter_poll_interval
+    name: "Inverter poll interval"
+    entity_category: config
+    options: *poll_intervals
+    initial_option: "20 s"
+    optimistic: true
+    restore_value: true
+    web_server:
+      sorting_group_id: polling_group
+    set_action:
+      - lambda: |-
+          const uint32_t interval_ms = std::strtoul(x.c_str(), nullptr, 10) * 1000u;
+          if (interval_ms == id(smg0).get_update_interval())
+            return;
+          id(smg0).stop_poller();
+          id(smg0).set_update_interval(interval_ms);
+          id(smg0).start_poller();
+
+  - platform: template
+    id: language_select
+    name: "Language"
+    entity_category: config
+    options: ["English", "Русский"]
+    update_interval: never
+    lambda: |-
+      return std::string(id(russian_language) ? "Русский" : "English");
+    web_server:
+      sorting_group_id: daly_setup_group
+      sorting_weight: 0
+    set_action:
+      - lambda: |-
+          id(russian_language) = x == "Русский";
+          id(language_select).update();
+          for (auto *sensor : std::initializer_list<text_sensor::TextSensor *>{
+                   id(inverter_mode_text), id(inverter_fault_text), id(inverter_warning_text),
+                   id(daly_battery_status_text), id(daly_errors_text), id(daly_setup_status),
+                   id(daly_devices_found)}) {
+            if (sensor->has_state()) {
+              const std::string raw = sensor->get_raw_state();
+              sensor->publish_state(raw);
+            }
+          }
 
   - platform: template
     id: daly_register_mode
@@ -1677,7 +1977,7 @@ select:
 
   - platform: template
     id: daly_device_choice
-    name: "Connect to Daly device"
+    name: "Daly device"
     entity_category: config
     options: ["Choose a number", "1", "2", "3", "4", "5"]
     web_server:
@@ -1702,12 +2002,12 @@ select:
   # Output Mode                                                   Uint  300 1 R/W 0: Single, 1: Parallel, 2: 3 Phase-P1, 3: 3 Phase-P2, 4: 3 Phase-P3
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} output mode"
+    name: "Output mode"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 300
     value_type: U_WORD
-    entity_category: config
     icon: mdi:cog
     optionsmap:
       "Single": 0
@@ -1719,12 +2019,12 @@ select:
   # Output priority                                               Uint  301 1 R/W 0: Utility-PV-Battery, 1: PV-Utility-Battery, 2: PV-Battery-Utility
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} output priority"
+    name: "Output priority"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 301
     value_type: U_WORD
-    entity_category: config
     icon: mdi:cog
     optionsmap:
       "Utility-PV-Battery (UTI)": 0
@@ -1735,12 +2035,12 @@ select:
   # Input voltage range                                           Uint  302 1 R/W 0: Wide range, 1: Narrow range
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} input voltage range"
+    name: "Input voltage range"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 302
     value_type: U_WORD
-    entity_category: config
     icon: mdi:cog
     optionsmap:
       "Wide range": 0
@@ -1749,12 +2049,12 @@ select:
   # Buzzer mode                                                   Uint  303 1 R/W 0: Mute in all situations, 1: Sound when the input source is changed or there is a specific warning or fault, 2: Sound when there is aspecific warning or fault, 3: Sound when fault occurs
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} buzzer mode"
+    name: "Buzzer mode"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 303
     value_type: U_WORD
-    entity_category: config
     icon: mdi:cog
     optionsmap:
       "Silent": 0
@@ -1765,12 +2065,12 @@ select:
   # LCD backlight                                                 Uint  305 1 R/W 0: Timed off, 1: Always on
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} lcd backlight"
+    name: "Lcd backlight"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 305
     value_type: U_WORD
-    entity_category: config
     icon: mdi:cog
     optionsmap:
       "Timed off": 0
@@ -1779,12 +2079,12 @@ select:
   # Battery charging priority                                     Uint  331 1 R/W 0: Utility priority, 1: PV priority, 2: PV is at the same level as the Utility, 3: Only PV charging is allowed
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} battery charging priority"
+    name: "Charge priority"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 331
     value_type: U_WORD
-    entity_category: config
     icon: mdi:cog
     optionsmap:
       "Utility priority": 0
@@ -1795,12 +2095,13 @@ select:
   # Turn on mode                                                  Uint  406 1 R/W 0: Can be turn-on locally or remotely, 1: Only local turn-on, 2: Only remote turn-on
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} turn on mode"
+    name: "Power-on mode"
+    entity_category: config
+    disabled_by_default: true
     device_id: device_inverter
     use_write_multiple: true
     address: 406
     value_type: U_WORD
-    entity_category: config
     icon: mdi:cog
     optionsmap:
       "Local and remotely turn-on allowed": 0
@@ -1809,12 +2110,12 @@ select:
 
   - platform: modbus_controller
     modbus_controller_id: smg0
-    name: "${inv_name} battery type"
+    name: "Battery type"
+    entity_category: config
     device_id: device_inverter
     use_write_multiple: true
     address: 322
     value_type: U_WORD
-    entity_category: config
     icon: mdi:cog
     optionsmap:
       "AGM": 0
