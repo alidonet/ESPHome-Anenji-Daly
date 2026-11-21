@@ -10,6 +10,8 @@
 
 This is a Home Assistant / ESPHome project for monitoring the inverter (tested on Anenji 4.2kW) via RS485 port and Daly BMS via BT protocol, as single ESP32 controller.
 
+The inverter firmware has been tested only with the Anenji 4.2 kW. It may also work with Aninerel ANL-4200T-24L-W / ANL-4200T-24L-W-PRO, EASUN/iSolar SMG II, SMG III 6.2 kW 48 V, PowMr POW-HVM5.5K-48V / POW-HVM5.5K-48V-P, Qoltec 53963, and Anenji ANJ-4200W-24V-W-AE, 6200W-WiFi, and 6.2KWT.
+
 ## Install and configure
 
 1. Download the firmware from [GitHub Releases](https://github.com/alidonet/ESPHome-Anenji-Daly/releases).

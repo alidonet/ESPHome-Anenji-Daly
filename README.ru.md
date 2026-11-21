@@ -10,6 +10,8 @@
 
 Проект на базе ESP32, где собираются данные инвертора (проверено на версии Anenji 4,2 кВт) по RS485 и батареи Daly BMS по Bluetooth LE. Прошивка использует ESPHome.
 
+Работу прошивки с инвертором проверяли только на Anenji 4,2 кВт. Возможна совместимость с Aninerel ANL-4200T-24L-W / ANL-4200T-24L-W-PRO, EASUN/iSolar SMG II, SMG III 6,2 кВт 48 В, PowMr POW-HVM5.5K-48V / POW-HVM5.5K-48V-P, Qoltec 53963, а также с Anenji ANJ-4200W-24V-W-AE, 6200W-WiFi и 6.2KWT.
+
 ## Установка и настройка
 
 1. Скачайте прошивку со страницы [релизов GitHub](https://github.com/alidonet/ESPHome-Anenji-Daly/releases). Она предназначена для классического ESP32 (`esp32dev`, ревизия чипа 3.1 или новее). Для первой прошивки по USB используйте образ `.factory.bin` и [ESPHome Web](https://web.esphome.io/).
