@@ -1,6 +1,6 @@
 # Шлюз Anenji–Daly на ESP32
 
-[![Минимальная версия ESPHome](https://img.shields.io/badge/dynamic/regex?url=https%3A%2F%2Fraw.githubusercontent.com%2Falidonet%2FESPHome-Anenji-Daly%2Fmain%2FESPHome%2Fanenji-daly.yaml&search=%5E%5B%20%5Ct%5D%2Bmin_version%3A%5B%20%5Ct%5D%2A%5B%22%27%5D%3F%28%5B0-9%5D%2B%5C.%5B0-9%5D%2B%5C.%5B0-9%5D%2B%29%5B%22%27%5D%3F%5B%20%5Ct%5D%2A%28%3F%3A%23%5B%5E%5Cr%5Cn%5D%2A%29%3F%5Cr%3F%24&replace=%241%2B&flags=m&label=ESPHome&color=000000&logo=esphome)](https://esphome.io/)
+[![Минимальная версия ESPHome](https://img.shields.io/badge/dynamic/regex?url=https%3A%2F%2Fraw.githubusercontent.com%2Falidonet%2FESPHome-Anenji-Daly%2Fmain%2Fanenji-daly.yaml&search=%5E%5B%20%5Ct%5D%2Bmin_version%3A%5B%20%5Ct%5D%2A%5B%22%27%5D%3F%28%5B0-9%5D%2B%5C.%5B0-9%5D%2B%5C.%5B0-9%5D%2B%29%5B%22%27%5D%3F%5B%20%5Ct%5D%2A%28%3F%3A%23%5B%5E%5Cr%5Cn%5D%2A%29%3F%5Cr%3F%24&replace=%241%2B&flags=m&label=ESPHome&color=000000&logo=esphome)](https://esphome.io/)
 [![Последний релиз прошивки](https://img.shields.io/github/v/release/alidonet/ESPHome-Anenji-Daly?label=Firmware)](https://github.com/alidonet/ESPHome-Anenji-Daly/releases/latest)
 <!-- [![Всего загрузок релизов](https://img.shields.io/github/downloads/alidonet/ESPHome-Anenji-Daly/total?label=Release%20downloads)](https://github.com/alidonet/ESPHome-Anenji-Daly/releases) -->
 
