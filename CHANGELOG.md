@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.5.0
+
+- Enabled firmware updates from the web interface and kept native ESPHome OTA.
+- Restore the Daly connection after a failed OTA update.
+- Mark stale inverter power readings as unavailable and display inverter connectivity in Home Assistant.
+- Restore daily PV energy only for the matching calendar date.
+
 ## v1.4
 
 - Added independently configurable and persistent Daly and inverter polling intervals;

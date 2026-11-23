@@ -48,12 +48,24 @@ This is the simple schematics:
 ```
 ┌───────────┐              ┌────────────────┐           ┌────────────────────┐
 │           │              │             GND│<--------->│GND           ESP32 │
-│       1 B-│<-----B- ---->│B-   RS485   RXD│<--------->│RX2 GPIO17          │
-│ RJ45  2 A+│<---- A+ ---->│A+   to TTL  TXD│<--------->│TX2 GPIO16          │
+│       1 B-│<-----B- ---->│B-   RS485   TXD│---------->│RX2 GPIO17          │
+│ RJ45  2 A+│<---- A+ ---->│A+   to TTL  RXD│<----------│TX2 GPIO16          │
 │       8   │<--- GND ---->│GND  module  VCC│<--------->│3.3V             VCC│<--5V
 │           │              │                │           │                 GND│<--GND
 └───────────┘              └────────────────┘           └────────────────────┘
 ```
+
+## Updating over Wi-Fi
+
+Download `anenji-daly-firmware.ota.bin` from the release. Starting with v1.5.0, the easiest way to update is to open `http://anenji-daly.local/` (or the ESP32's IP address), select the file under **OTA Update**, and click **Update**.
+
+As an alternative, or when upgrading from a firmware version without **OTA Update**, use ESPHome CLI 2026.11 or newer from the same network. Substitute the ESP32's IP address if the hostname does not resolve.
+
+```sh
+esphome upload --device anenji-daly.local --file anenji-daly-firmware.ota.bin
+```
+
+Use `.factory.bin` for USB installation. OTA uses the prebuilt image directly and requires no YAML or compilation.
 
 ## Home Assistant dashboards
 
@@ -63,6 +75,8 @@ board a unique ESPHome node name if you install more than one on the same
 network. The sample dashboards use the default entity IDs,
 such as `sensor.anenji_grid_power` and `sensor.daly_soc`. Advanced settings and
 service readings marked disabled by default can be enabled from the entity registry.
+
+The inverter's **Online** badge reflects fresh grid power readings. Grid, load, battery and PV power each become unavailable after three polling intervals without a reading. **PV energy today** uses UTC in the default build and restores a saved total only for the same calendar day. For a custom build, set the `timezone` substitution to your local IANA time zone.
 
 The [inverter view](Hass/inverter.yaml) uses [Sunsynk Power Flow Card](https://github.com/slipx06/sunsynk-power-flow-card),
 [Power Flow Card Plus](https://github.com/flixlix/power-flow-card-plus), and

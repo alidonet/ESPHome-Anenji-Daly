@@ -5,6 +5,7 @@ substitutions:
   refresh_inverter: 20s
   tx_pin: GPIO16
   rx_pin: GPIO17
+  timezone: Etc/UTC
 
 globals:
   # A single formatter shared by all text sensor filters.
@@ -203,14 +204,24 @@ globals:
     type: std::string
     initial_value: '""'
 
-  - id: pv_energy_has_sample
+  - id: pv_daily_total
+    # Store the calendar date and its kWh together.
+    type: std::array<double, 2>
+    restore_value: true
+    initial_value: "{0, 0}"
+
+  - id: inverter_power_sample_ms
+    type: std::array<uint32_t, 4>
+    initial_value: "{0, 0, 0, 0}"
+
+  - id: daly_enabled_before_selection
+    type: bool
+    initial_value: "false"
+  - id: daly_enabled_before_ota
     type: bool
     initial_value: "false"
 
   - id: global_bms_online
-    type: bool
-    initial_value: "false"
-  - id: global_inverter_online
     type: bool
     initial_value: "false"
 
@@ -221,7 +232,7 @@ esphome:
   comment: ${device_description}
   project:
     name: "alidonet.esphome-bms-inverter"
-    version: "1.4.261121"
+    version: "1.5.0"
   on_boot:
     priority: -100
     then:
@@ -268,14 +279,23 @@ captive_portal:
 improv_serial:
 
 ota:
-  platform: esphome
-#  platform: web_server
-  on_begin:
-    then:
-      - script.stop: scan_for_daly
-      - script.stop: connect_daly
-      - switch.turn_off: ble_client_switch0
-      - logger.log: "BLE connection suspended for OTA update"
+  - platform: esphome
+    on_begin: &ota_begin
+      then:
+        - script.stop: restore_daly_after_ota
+        - lambda: |-
+            id(daly_enabled_before_ota) = id(connect_daly).is_running()
+                ? id(daly_enabled_before_selection) : id(client0).enabled;
+        - script.stop: scan_for_daly
+        - script.stop: connect_daly
+        - switch.turn_off: ble_client_switch0
+        - logger.log: "BLE connection suspended for OTA update"
+    on_error: &ota_error
+      then:
+        - script.execute: restore_daly_after_ota
+  - platform: web_server
+    on_begin: *ota_begin
+    on_error: *ota_error
 
 logger:
   level: INFO
@@ -332,33 +352,69 @@ modbus_controller:
     modbus_id: modbus0
     update_interval: ${refresh_inverter}
     offline_skip_updates: 0
-    on_online: 
-      then:
-        - globals.set: 
-            id: global_inverter_online
-            value: "true"        
-        - logger.log:
-            format: "Inverter connected"
-            level: info
-    on_offline: 
-      then:
-        - globals.set:
-            id: pv_energy_has_sample
-            value: "false"
-        - globals.set: 
-            id: global_inverter_online
-            value: "false"
-        - logger.log:
-            format: "Inverter NOT connected"
-            level: info
+
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          const uint32_t expiry = 3u * id(smg0).get_update_interval();
+          const uint32_t now = millis();
+          const std::array<sensor::Sensor *, 4> powers{
+              id(smg0_grid_power), id(smg0_load_power), id(smg0_battery_average_power), id(smg0_pv_average_power)};
+          for (size_t i = 0; i < powers.size(); ++i) {
+            if (powers[i]->has_state() && std::isfinite(powers[i]->state) &&
+                now - id(inverter_power_sample_ms)[i] >= expiry) {
+              powers[i]->publish_state(NAN);
+            }
+          }
 
 script:
-  - id: expire_inverter_battery_power
+  - id: restore_daly_after_ota
     mode: restart
     then:
-      # Allow two missed polls and time for the Modbus queue to drain.
-      - delay: !lambda return 3u * id(smg0).get_update_interval();
-      - lambda: id(smg0_battery_average_power).publish_state(NAN);
+      - wait_until:
+          condition:
+            lambda: return id(client0).state() == esp32_ble_tracker::ClientState::IDLE;
+          timeout: 12s
+      - lambda: |-
+          if (id(client0).state() != esp32_ble_tracker::ClientState::IDLE) {
+            id(daly_setup_status).publish_state("BLE disconnect timed out; restart the ESP32");
+            return;
+          }
+          const uint64_t address = id(saved_daly_address);
+          id(client0).set_address(address);
+          id(client0).set_enabled(id(daly_enabled_before_ota) && address != 0);
+          id(daly_setup_status).publish_state(address != 0 ? "Daly saved; scan to replace it" : "Scan to find your Daly");
+
+  - id: update_pv_daily_energy
+    parameters:
+      power: float
+    then:
+      - lambda: |-
+          static uint32_t last_sample_ms = 0;
+          static bool has_sample = false;
+          const auto date = id(local_time).now();
+          if (!date.is_valid()) {
+            has_sample = false;
+            return;
+          }
+          const int day = date.year * 10000 + date.month * 100 + date.day_of_month;
+          auto &total = id(pv_daily_total);
+          if (total[0] != day) {
+            total = {static_cast<double>(day), 0.0};
+            has_sample = false;
+          }
+          if (std::isfinite(power)) {
+            const uint32_t now = millis();
+            const uint32_t elapsed = now - last_sample_ms;
+            const uint32_t interval = id(smg0).get_update_interval();
+            if (has_sample && elapsed <= interval + interval / 2 && power > 0) {
+              total[1] += static_cast<double>(power) * elapsed / 3600000000.0;
+            }
+            last_sample_ms = now;
+            has_sample = true;
+          }
+          id(pv_energy_today).publish_state(total[1]);
 
   - id: watch_bms_telemetry
     mode: restart
@@ -390,6 +446,7 @@ script:
       slot: int
       previous_enabled: bool
     then:
+      - lambda: id(daly_enabled_before_selection) = previous_enabled;
       - text_sensor.template.publish:
           id: daly_setup_status
           state: "Connecting; waiting for Daly telemetry"
@@ -441,6 +498,20 @@ script:
 
 time:
   - platform: sntp
+    id: local_time
+    timezone: ${timezone}
+    on_time_sync:
+      - script.execute:
+          id: update_pv_daily_energy
+          power: !lambda return NAN;
+    on_time:
+      - seconds: 0
+        minutes: 0
+        hours: 0
+        then:
+          - script.execute:
+              id: update_pv_daily_energy
+              power: !lambda return NAN;
 
 # =================== BLE ======================
 
@@ -516,7 +587,7 @@ binary_sensor:
     device_id: device_inverter
     device_class: connectivity
     lambda: !lambda |-
-      return (id(global_inverter_online));
+      return id(smg0_grid_power).has_state() && std::isfinite(id(smg0_grid_power).state);
 
 # ============== ble ===========
 
@@ -543,8 +614,11 @@ button:
     on_press:
       - if:
           condition:
-            not:
-              script.is_running: connect_daly
+            and:
+              - not:
+                  script.is_running: connect_daly
+              - not:
+                  script.is_running: restore_daly_after_ota
           then:
             - script.execute: scan_for_daly
 
@@ -616,25 +690,15 @@ sensor:
     # device_id: device_esp
 
 # === rs485 ===
-  - platform: total_daily_energy
+  - platform: template
+    id: pv_energy_today
     name: "PV energy today"
     device_id: device_inverter
-    restore: true
     device_class: energy
-    power_id: pv_power_for_energy
-    method: right
-    filters:
-      # Multiplication factor from W to kW is 0.001
-      - multiply: 0.001
+    state_class: total_increasing
     unit_of_measurement: kWh
-
-  - platform: template
-    id: pv_power_for_energy
-    internal: true
+    accuracy_decimals: 3
     update_interval: never
-    unit_of_measurement: W
-    device_class: power
-    accuracy_decimals: 0
 
   - platform: template
     name: "Discharging power"
@@ -754,6 +818,7 @@ sensor:
   - platform: modbus_controller
     modbus_controller_id: smg0
     name: "Grid power"
+    id: smg0_grid_power
     device_id: device_inverter
     address: 204
     register_type: holding
@@ -762,6 +827,8 @@ sensor:
     device_class: power
     state_class: measurement
     accuracy_decimals: 0
+    on_raw_value:
+      - lambda: if (std::isfinite(x)) id(inverter_power_sample_ms)[0] = millis();
 
   # Effective inverter voltage                           0.1V     Int   205 1 R
   - platform: modbus_controller
@@ -883,6 +950,7 @@ sensor:
   - platform: modbus_controller
     modbus_controller_id: smg0
     name: "Load power"
+    id: smg0_load_power
     device_id: device_inverter
     address: 213
     register_type: holding
@@ -891,6 +959,8 @@ sensor:
     device_class: power
     state_class: measurement
     accuracy_decimals: 0
+    on_raw_value:
+      - lambda: if (std::isfinite(x)) id(inverter_power_sample_ms)[1] = millis();
 
   # Output apparent power                                1VA      Int   214 1 R
   - platform: modbus_controller
@@ -950,14 +1020,11 @@ sensor:
     device_class: power
     state_class: measurement
     accuracy_decimals: 0
+    on_raw_value:
+      - lambda: if (std::isfinite(x)) id(inverter_power_sample_ms)[2] = millis();
     on_value:
       - component.update: smg0_discharging_power
       - component.update: smg0_charging_power
-      - if:
-          condition:
-            lambda: return !isnan(x);
-          then:
-            - script.execute: expire_inverter_battery_power
 
   # PV average voltage                                   0.1V     Int   219 1 R
   - platform: modbus_controller
@@ -1003,19 +1070,14 @@ sensor:
     state_class: measurement
     accuracy_decimals: 0
     on_raw_value:
-      - sensor.template.publish:
-          id: pv_power_for_energy
-          state: !lambda |-
-            static uint32_t last_sample_ms = 0;
-            const uint32_t now = millis();
-            const uint32_t elapsed = now - last_sample_ms;
-            const uint32_t poll_interval = id(smg0).get_update_interval();
-            const bool fresh_pair = id(pv_energy_has_sample) &&
-                                    elapsed <= poll_interval + poll_interval / 2;
-            last_sample_ms = now;
-            id(pv_energy_has_sample) = std::isfinite(x);
-            // Zero advances the right-hand integrator without counting the gap.
-            return fresh_pair && id(pv_energy_has_sample) && x > 0 ? x : 0.0f;
+      - if:
+          condition:
+            lambda: return std::isfinite(x);
+          then:
+            - lambda: id(inverter_power_sample_ms)[3] = millis();
+            - script.execute:
+                id: update_pv_daily_energy
+                power: !lambda return x;
 
   # PV charging average power                            1W       Int   224 1 R
   - platform: modbus_controller
@@ -1135,7 +1197,7 @@ sensor:
     name: "Rated power"
     entity_category: diagnostic
     disabled_by_default: true
-    device_id: device_bms
+    device_id: device_inverter
     address: 643
     register_type: holding
     value_type: U_WORD
@@ -1700,7 +1762,8 @@ switch:
     lambda: return id(client0).enabled;
     turn_on_action:
       - lambda: |-
-          if (id(saved_daly_address) != 0 && !id(connect_daly).is_running())
+          if (id(saved_daly_address) != 0 && !id(connect_daly).is_running() &&
+              !id(restore_daly_after_ota).is_running())
             id(client0).set_enabled(true);
     turn_off_action:
       - lambda: id(client0).set_enabled(false);
@@ -1987,7 +2050,7 @@ select:
       - lambda: |-
           if (x.size() != 1 || x[0] < '1' || x[0] > '5')
             return;
-          if (id(scan_for_daly).is_running() || id(connect_daly).is_running())
+          if (id(scan_for_daly).is_running() || id(connect_daly).is_running() || id(restore_daly_after_ota).is_running())
             return;
           const size_t slot = x[0] - '1';
           id(daly_device_choice).publish_state("Choose a number");

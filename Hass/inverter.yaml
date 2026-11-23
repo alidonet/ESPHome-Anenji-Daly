@@ -1,195 +1,18 @@
-# Entity IDs assume a fresh Home Assistant setup with the default device names.
+# Default entity IDs. Adjust them if renamed in Home Assistant.
 type: sections
 max_columns: 3
 title: Инвертор
-path: anenji
+path: inverter
 sections:
   - type: grid
     cards:
-      - cardstyle: lite
-        wide: false
-        large_font: false
-        show_solar: true
-        show_battery: true
-        show_grid: true
-        center_no_grid: false
-        card_height: 100%
-        card_width: 100%
-        decimal_places: 1
-        decimal_places_energy: 1
-        dynamic_line_width: true
-        max_line_width: 4
-        min_line_width: 2
-        inverter:
-          modern: true
-          colour: "#69a9d3"
-          autarky: power
-          auto_scale: true
-          three_phase: false
-          label_autarky: Инвертор
-          label_ratio: ""
-        battery:
-          shutdown_soc: 20
-          count: 1
-          show_daily: false
-          max_power: 4200
-          dynamic_colour: true
-          linear_gradient: true
-          animate: false
-          show_remaining_energy: false
-          remaining_energy_to_shutdown: true
-          invert_flow: true
-          show_absolute: false
-          invert_power: false
-          hide_soc: true
-          colour: "#2eaa17"
-          auto_scale: false
-        battery2:
-          energy: 0
-          shutdown_soc: 20
-          soc_end_of_charge: 100
-          invert_power: false
-          hide_soc: false
-          colour: "#ffc0cb"
-          show_remaining_energy: true
-          remaining_energy_to_shutdown: false
-          show_absolute: false
-          auto_scale: true
-          dynamic_colour: true
-          linear_gradient: true
-          animate: true
-          path_threshold: 100
-          navigate: ""
-          invert_flow: false
-        solar:
-          colour: "#ffa500"
-          show_daily: true
-          mppts: 1
-          animation_speed: 9
-          max_power: 8000
-          pv1_name: ""
-          pv2_name: ""
-          pv3_name: ""
-          pv4_name: ""
-          pv5_name: ""
-          pv6_name: ""
-          auto_scale: true
-          display_mode: 1
-          dynamic_colour: true
-          efficiency: 3
-          off_threshold: 10
-          navigate: ""
-          invert_flow: false
-        load:
-          colour: "#c88a4d"
-          off_colour: "#9e9e9e"
-          dynamic_colour: true
-          dynamic_icon: false
-          aux_dynamic_colour: true
-          off_threshold: 0
-          show_daily: false
-          show_aux: false
-          show_daily_aux: false
-          invert_aux: false
-          invert_load: false
-          show_absolute_aux: false
-          animation_speed: 4
-          max_power: 4200
-          aux_name: ""
-          aux_daily_name: ""
-          aux_type: default
-          additional_loads: 0
-          aux_loads: 0
-          aux_load1_name: ""
-          aux_load2_name: ""
-          load1_icon: default
-          load2_icon: default
-          load1_name: ""
-          load2_name: ""
-          load3_name: ""
-          load4_name: ""
-          load5_name: ""
-          load6_name: ""
-          auto_scale: true
-          path_threshold: 100
-          navigate: ""
-          invert_flow: false
-          label_daily_load: ""
-          essential_name: Дом
-        grid:
-          colour: "#13aef0"
-          grid_name: Сеть
-          label_daily_grid_buy: ""
-          label_daily_grid_sell: ""
-          show_daily_buy: false
-          show_daily_sell: false
-          show_nonessential: false
-          nonessential_icon: default
-          nonessential_name: ""
-          additional_loads: 0
-          load1_name: ""
-          load2_name: ""
-          load3_name: ""
-          invert_grid: false
-          animation_speed: 8
-          max_power: 4200
-          auto_scale: true
-          energy_cost_decimals: 2
-          show_absolute: false
-          off_threshold: 0
-          navigate: ""
-          invert_flow: false
-        type: custom:sunsynk-power-flow-card
-        entities:
-          inverter_voltage_154: sensor.anenji_inverter_voltage
-          load_frequency_192: sensor.anenji_load_frequency
-          inverter_current_164: sensor.anenji_inverter_current
-          inverter_power_175: sensor.anenji_inverter_power
-          grid_power_169: sensor.anenji_grid_power
-          battery_voltage_183: sensor.anenji_battery_voltage
-          battery_soc_184: sensor.anenji_battery_soc
-          battery_power_190: sensor.anenji_battery_power
-          battery_current_191: sensor.anenji_battery_current
-          # Inverter AC input power is the available grid reading.
-          grid_ct_power_172: sensor.anenji_grid_power
-          battery_temp_182: sensor.daly_temperature
-          dc_transformer_temp_90: sensor.anenji_dc_dc_temperature
-          radiator_temp_91: sensor.anenji_inverter_temperature
-          grid_voltage: sensor.anenji_grid_voltage
-          essential_power: sensor.anenji_load_power
-          pv1_power_186: sensor.anenji_pv_power
-          pv1_voltage_109: sensor.anenji_pv_voltage
-          pv1_current_110: sensor.anenji_pv_current
-          day_pv_energy_108: sensor.anenji_pv_energy_today
-        grid_options:
-          columns: full
-      - type: history-graph
-        entities:
-          - entity: sensor.anenji_battery_soc
-            name: Инвертор
-          - entity: sensor.daly_soc
-            name: Батарея BMS
-          - entity: sensor.anenji_load
-            name: Нагрузка
-        logarithmic_scale: false
-        title: Заряд батареи
-      - type: history-graph
-        entities:
-          - entity: sensor.anenji_dc_dc_temperature
-            name: DC-DC
-          - entity: sensor.anenji_inverter_temperature
-            name: Inverter
-          - entity: sensor.daly_temperature
-            name: Battery BMS
-        logarithmic_scale: false
-        title: Температура
-    column_span: 2
-  - type: grid
-    cards:
-      # Home Flow Card: https://github.com/flixlix/home-flow-card
+      - type: heading
+        heading: Потоки энергии
+        icon: mdi:transmission-tower
       - type: custom:home-flow-card
         animate_numbers: true
         clickable_entities: true
+        display_zero_lines: true
         base_decimals: 0
         kilo_decimals: 1
         min_flow_rate: 0.75
@@ -198,12 +21,13 @@ sections:
         min_expected_power: 0.01
         grid:
           entity: sensor.anenji_grid_power
-          # Add power_outage only if you have a dedicated outage sensor.
+          name: Сеть
         solar:
           entity: sensor.anenji_pv_power
+          name: Солнце
         battery:
           entity: sensor.anenji_battery_power
-          # Anenji reports charging as positive.
+          name: Батарея
           invert_state: true
           state_of_charge: sensor.daly_soc
           state_of_charge_position: before_value
@@ -212,8 +36,9 @@ sections:
             yellow: 40
         home:
           entity: sensor.anenji_load_power
+          name: Дом
           override_state: true
-        # Optional local boiler integration. Uncomment if both entities exist.
+        # Optional boiler. Uncomment if both entities exist in your HA.
         # heat_pump:
         #   entity: sensor.boiler_power
         #   climate: climate.otoplenie_baxi
@@ -227,8 +52,8 @@ sections:
             entity:
               consumption: sensor.anenji_charging_power
               production: sensor.anenji_discharging_power
-            state_of_charge: sensor.anenji_battery_soc
-            show_state_of_charge: true
+            state_of_charge: sensor.daly_soc
+            display_state: one_way
             color_value: true
             use_metadata: false
           grid:
@@ -240,15 +65,14 @@ sections:
               entity: sensor.anenji_grid_voltage
           solar:
             entity: sensor.anenji_pv_power
-            display_zero_state: false
-            display_zero: true
+            display_zero_state: true
           home:
             entity: sensor.anenji_load_power
             subtract_individual: false
             override_state: true
             secondary_info:
               entity: sensor.anenji_load
-              unit_of_measurement: "%"
+              unit_of_measurement: '%'
               display_zero: true
               icon: mdi:power-plug
         clickable_entities: true
@@ -272,7 +96,177 @@ sections:
         disable_dots: false
         grid_options:
           columns: full
+  - type: grid
+    column_span: 2
+    cards:
+      - type: heading
+        heading: Показания инвертора
+        icon: mdi:solar-power
+      - cardstyle: lite
+        wide: false
+        large_font: false
+        show_solar: true
+        show_battery: true
+        show_grid: true
+        center_no_grid: false
+        card_height: 100%
+        card_width: 100%
+        decimal_places: 1
+        decimal_places_energy: 1
+        dynamic_line_width: true
+        max_line_width: 4
+        min_line_width: 2
+        inverter:
+          modern: true
+          colour: '#69a9d3'
+          autarky: power
+          auto_scale: true
+          three_phase: false
+          label_autarky: Инвертор
+        battery:
+          shutdown_soc: 20
+          count: 1
+          show_daily: false
+          max_power: 4200
+          dynamic_colour: true
+          linear_gradient: true
+          animate: false
+          show_remaining_energy: false
+          remaining_energy_to_shutdown: true
+          invert_flow: true
+          show_absolute: false
+          invert_power: false
+          hide_soc: false
+          colour: '#2eaa17'
+          auto_scale: false
+        solar:
+          colour: '#ffa500'
+          show_daily: true
+          mppts: 1
+          animation_speed: 9
+          max_power: 8000
+          auto_scale: true
+          display_mode: 1
+          dynamic_colour: true
+          efficiency: 3
+          off_threshold: 10
+          invert_flow: false
+        load:
+          colour: '#c88a4d'
+          off_colour: '#9e9e9e'
+          dynamic_colour: true
+          dynamic_icon: false
+          aux_dynamic_colour: true
+          off_threshold: 0
+          show_daily: false
+          show_aux: false
+          show_daily_aux: false
+          invert_aux: false
+          invert_load: false
+          show_absolute_aux: false
+          animation_speed: 4
+          max_power: 4200
+          aux_type: default
+          additional_loads: 0
+          aux_loads: 0
+          load1_icon: default
+          load2_icon: default
+          auto_scale: true
+          path_threshold: 100
+          invert_flow: false
+          essential_name: Дом
+        grid:
+          colour: '#13aef0'
+          grid_name: Сеть
+          show_daily_buy: false
+          show_daily_sell: false
+          show_nonessential: false
+          nonessential_icon: default
+          additional_loads: 0
+          invert_grid: false
+          animation_speed: 8
+          max_power: 4200
+          auto_scale: true
+          energy_cost_decimals: 2
+          show_absolute: false
+          off_threshold: 0
+          invert_flow: false
+        type: custom:sunsynk-power-flow-card
+        entities:
+          inverter_voltage_154: sensor.anenji_inverter_voltage
+          load_frequency_192: sensor.anenji_load_frequency
+          inverter_current_164: sensor.anenji_inverter_current
+          inverter_power_175: sensor.anenji_inverter_power
+          grid_power_169: sensor.anenji_grid_power
+          battery_voltage_183: sensor.anenji_battery_voltage
+          battery_soc_184: sensor.daly_soc
+          battery_power_190: sensor.anenji_battery_power
+          battery_current_191: sensor.anenji_battery_current
+          grid_ct_power_172: sensor.anenji_grid_power
+          battery_temp_182: sensor.daly_temperature
+          dc_transformer_temp_90: sensor.anenji_dc_dc_temperature
+          radiator_temp_91: sensor.anenji_inverter_temperature
+          grid_voltage: sensor.anenji_grid_voltage
+          essential_power: sensor.anenji_load_power
+          pv1_power_186: sensor.anenji_pv_power
+          pv1_voltage_109: sensor.anenji_pv_voltage
+          pv1_current_110: sensor.anenji_pv_current
+          day_pv_energy_108: sensor.anenji_pv_energy_today
+        grid_options:
+          columns: full
+  - type: grid
+    column_span: 3
+    cards:
+      - type: heading
+        heading: История за 24 часа
+        icon: mdi:chart-line
       - type: history-graph
+        title: Связь и режим
+        hours_to_show: 24
+        entities:
+          - entity: binary_sensor.anenji_online
+            name: Связь
+          - entity: sensor.anenji_mode
+            name: Режим
+        grid_options:
+          columns: full
+      - type: history-graph
+        title: Мощность
+        hours_to_show: 24
+        entities:
+          - entity: sensor.anenji_grid_power
+            name: Сеть
+          - entity: sensor.anenji_pv_power
+            name: Солнце
+          - entity: sensor.anenji_load_power
+            name: Нагрузка
+          - entity: sensor.anenji_charging_power
+            name: Заряд
+          - entity: sensor.anenji_discharging_power
+            name: Разряд
+        grid_options:
+          columns: full
+      - type: history-graph
+        title: Заряд батареи
+        hours_to_show: 24
+        entities:
+          - entity: sensor.daly_soc
+            name: Daly
+          - entity: sensor.anenji_battery_soc
+            name: Инвертор
+      - type: history-graph
+        title: Температура
+        hours_to_show: 24
+        entities:
+          - entity: sensor.anenji_dc_dc_temperature
+            name: DC-DC
+          - entity: sensor.anenji_inverter_temperature
+            name: Инвертор
+          - entity: sensor.daly_temperature
+            name: Батарея
+      - type: history-graph
+        title: Ток
+        hours_to_show: 24
         entities:
           - entity: sensor.anenji_inverter_current
             name: Инвертор
@@ -280,29 +274,20 @@ sections:
             name: Зарядка
           - entity: sensor.anenji_load_current
             name: Нагрузка
-        title: Ток
       - type: history-graph
+        title: Напряжение
+        hours_to_show: 24
         entities:
           - entity: sensor.anenji_grid_voltage
-            name: Входное (сеть)
+            name: Сеть
           - entity: sensor.anenji_load_voltage
-            name: Выходное (нагрузка)
-        title: Напряжение
-      - type: history-graph
-        entities:
-          - entity: sensor.anenji_grid_power
-            name: Общая
-          - entity: sensor.anenji_charger_power
-            name: Инвертор
-          - entity: sensor.anenji_charging_power
-            name: Получает батарея
-          - entity: sensor.anenji_discharging_power
-            name: Отдает батарея
-          - entity: sensor.anenji_load_power
-            name: Нагрузка
-        title: Мощность
+            name: Выход
 cards: []
 badges:
+  - type: entity
+    entity: binary_sensor.anenji_online
+    name: Связь с инвертором
+    show_name: true
   - type: entity
     show_name: true
     show_state: true
@@ -316,7 +301,7 @@ badges:
     show_name: true
     show_state: true
     show_icon: true
-    entity: sensor.anenji_battery_soc
+    entity: sensor.daly_soc
     name: Заряд батареи
     state_content:
       - state
@@ -336,11 +321,15 @@ badges:
     entity: sensor.anenji_load_power
     name: Нагрузка
   - type: entity
+    entity: sensor.anenji_pv_energy_today
+    name: Выработка PV сегодня
+    show_name: true
+  - type: entity
     show_name: true
     show_state: true
     show_icon: true
     entity: sensor.anenji_warning
-    name: Сообщение
+    name: Предупреждение
     state_content:
       - state
       - last_changed
