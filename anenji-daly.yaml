@@ -605,6 +605,10 @@ binary_sensor:
 
 button:
 
+  - platform: restart
+    name: "Restart ESP32"
+    entity_category: config
+
   - platform: template
     name: "Find Daly"
     entity_category: config
